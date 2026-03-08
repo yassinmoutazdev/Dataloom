@@ -1,0 +1,25 @@
+{
+  "fact_order_items": {
+    "_description": "Main fact table containing all orders and order items. Use this for revenue, order counts, freight, and delivery analysis. Do NOT use fact_orders — it does not exist. Do NOT prefix column names with the table name when specifying time_filter column.",
+    "price": "Sale price of the product in this order item (revenue)",
+    "freight_value": "Shipping/freight cost charged for this order item",
+    "order_purchase_timestamp": "When the order was placed. For time_filter use column: 'order_purchase_timestamp' exactly.",
+    "order_delivered_customer_date": "When the order was actually delivered to the customer",
+    "order_estimated_delivery_date": "The estimated delivery date promised to the customer",
+    "order_id": "Unique identifier for each order (UUID type — cannot be used with SUM or AVG)",
+    "customer_id": "Foreign key to dim_customers table",
+    "product_id": "Foreign key to dim_products table"
+  },
+  "dim_customers": {
+    "_description": "Customer dimension table. Join to fact_order_items on customer_id to get geographic data. Always include join: 'fact_order_items.customer_id = dim_customers.customer_id' when using any dim_customers column.",
+    "customer_state": "Brazilian state abbreviation (e.g. SP, RJ, MG)",
+    "customer_city": "City where the customer is located"
+  },
+  "dim_products": {
+    "_description": "Product dimension table. Join to fact_order_items on product_id to get category data. Always include join: 'fact_order_items.product_id = dim_products.product_id' when using any dim_products column.",
+    "product_category_name": "Product category in Portuguese (e.g. Automotivo, Bebes, Eletronicos)"
+  },
+  "dim_date": {
+    "_description": "Date dimension table. Contains year, month, week, day breakdowns for time-based analysis."
+  }
+}

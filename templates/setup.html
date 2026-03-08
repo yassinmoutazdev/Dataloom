@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dataloom — Connect your database</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg width='32' height='32' viewBox='0 0 40 40' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3ClinearGradient id='fg' x1='8' y1='6' x2='32' y2='34' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0%25' stop-color='%23A5B4FC'/%3E%3Cstop offset='100%25' stop-color='%234F46E5'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='20' cy='20' r='17' stroke='url(%23fg)' stroke-width='1.8' fill='none'/%3E%3Cpath d='M20 3 C11 7 7.5 13 7.5 20 C7.5 27 11 33 20 37' stroke='url(%23fg)' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3Cpath d='M20 3 C23 7 24.5 13 24.5 20 C24.5 27 23 33 20 37' stroke='url(%23fg)' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3Cpath d='M20 3 C29 7 32.5 13 32.5 20 C32.5 27 29 33 20 37' stroke='url(%23fg)' stroke-width='1.3' fill='none' stroke-linecap='round' opacity='.5'/%3E%3Cpath d='M4.5 13 C10 10.5 15 9.5 20 9.5 C25 9.5 30 10.5 35.5 13' stroke='url(%23fg)' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3Cpath d='M3 20 C8 19 14 18.5 20 18.5 C26 18.5 32 19 37 20' stroke='url(%23fg)' stroke-width='1.1' fill='none' stroke-linecap='round' opacity='.35'/%3E%3Cpath d='M4.5 27 C10 29.5 15 30.5 20 30.5 C25 30.5 30 29.5 35.5 27' stroke='url(%23fg)' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3Cpath d='M9 28 C13 23 17 17 24 11' stroke='url(%23fg)' stroke-width='1.4' fill='none' stroke-linecap='round' opacity='.8'/%3E%3Ccircle cx='14.5' cy='12.5' r='2.2' fill='%23C7D2FE'/%3E%3Ccircle cx='23' cy='10.5' r='1.9' fill='%23A5B4FC'/%3E%3Ccircle cx='11' cy='20' r='2.2' fill='%23818CF8'/%3E%3Ccircle cx='22.5' cy='19' r='2' fill='%23C7D2FE'/%3E%3Ccircle cx='9.5' cy='27.5' r='2' fill='%23818CF8'/%3E%3Ccircle cx='26' cy='28.5' r='2.2' fill='%23A5B4FC'/%3E%3Ccircle cx='19.5' cy='30.5' r='1.7' fill='%23818CF8'/%3E%3C/svg%3E"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Design tokens ─────────────────────────────────────── */
+    :root {
+      --bg-base:       #080B12;
+      --bg-surface:    #0E1117;
+      --bg-elevated:   #141824;
+      --bg-card:       #111520;
+      --accent:        #4F46E5;
+      --accent-hover:  #4338CA;
+      --accent-glow:   rgba(79,70,229,0.18);
+      --accent-dim:    rgba(79,70,229,0.08);
+      --accent-border: rgba(79,70,229,0.35);
+      --text-primary:  #F1F3F9;
+      --text-secondary:#8B93A7;
+      --text-dim:      #3D4459;
+      --border:        rgba(255,255,255,0.06);
+      --border-hover:  rgba(255,255,255,0.12);
+      --success:       #10B981;
+      --success-dim:   rgba(16,185,129,0.12);
+      --error:         #EF4444;
+      --error-dim:     rgba(239,68,68,0.1);
+      --radius-sm:     6px;
+      --radius:        10px;
+      --radius-lg:     16px;
+      --radius-xl:     24px;
+    }
+
+    /* ── Reset ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow-x: hidden;
+      overflow-y: auto;
+      position: relative;
+    }
+
+    /* ── Background atmosphere ─────────────────────────────── */
+    .bg-orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(120px);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .bg-orb-1 {
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(79,70,229,0.15) 0%, transparent 70%);
+      top: -200px; left: -200px;
+    }
+    .bg-orb-2 {
+      width: 400px; height: 400px;
+      background: radial-gradient(circle, rgba(79,70,229,0.08) 0%, transparent 70%);
+      bottom: -100px; right: -100px;
+    }
+    .bg-grid {
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(79,70,229,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(79,70,229,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 0%, transparent 100%);
+    }
+
+    /* ── Layout ────────────────────────────────────────────── */
+    .wrapper {
+      position: relative; z-index: 1;
+      width: 100%; max-width: 520px;
+      padding: 24px 24px 48px;
+      animation: fadeUp 0.5s ease both;
+      margin: auto;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Logo / wordmark ───────────────────────────────────── */
+    .logo {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 40px;
+      justify-content: center;
+    }
+    .logo-mark {
+      display: flex; align-items: center; justify-content: center;
+      filter: drop-shadow(0 0 10px rgba(79,70,229,0.45));
+    }
+    .logo-mark svg { display: block; }
+    .logo-text {
+      font-family: 'Syne', sans-serif;
+      font-size: 18px; font-weight: 700;
+      letter-spacing: -0.3px;
+      color: var(--text-primary);
+    }
+
+    /* ── Step indicator ────────────────────────────────────── */
+    .steps {
+      display: flex; align-items: center; justify-content: center;
+      gap: 0; margin-bottom: 36px;
+    }
+    .step-item {
+      display: flex; align-items: center; gap: 0;
+    }
+    .step-dot {
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 1.5px solid var(--border);
+      background: var(--bg-elevated);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 500; color: var(--text-dim);
+      transition: all 0.3s ease;
+      font-family: 'DM Mono', monospace;
+      position: relative; z-index: 1;
+    }
+    .step-dot.active {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+      color: var(--accent);
+      box-shadow: 0 0 0 4px var(--accent-dim);
+    }
+    .step-dot.done {
+      border-color: var(--success);
+      background: var(--success-dim);
+      color: var(--success);
+    }
+    .step-dot.done::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 6l3 3 5-5' stroke='%2310B981' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/12px no-repeat;
+    }
+    .step-dot.done { font-size: 0; }
+    .step-line {
+      width: 56px; height: 1px;
+      background: var(--border);
+      transition: background 0.4s ease;
+    }
+    .step-line.done { background: var(--success); opacity: 0.4; }
+
+    /* ── Card ──────────────────────────────────────────────── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 36px;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.02) inset;
+    }
+
+    /* ── Card header ───────────────────────────────────────── */
+    .card-header { margin-bottom: 28px; }
+    .card-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 22px; font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.4px;
+      margin-bottom: 6px;
+    }
+    .card-subtitle {
+      font-size: 13.5px; color: var(--text-secondary);
+      line-height: 1.5; font-weight: 300;
+    }
+
+    /* ── DB type selector ──────────────────────────────────── */
+    .db-type-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 10px; margin-bottom: 24px;
+    }
+    .db-type-btn {
+      background: var(--bg-elevated);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex; flex-direction: column;
+      align-items: center; gap: 10px;
+      color: var(--text-secondary);
+    }
+    .db-type-btn:hover {
+      border-color: var(--border-hover);
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      transform: translateY(-1px);
+    }
+    .db-type-btn.selected {
+      border-color: var(--accent-border);
+      background: var(--accent-dim);
+      color: var(--accent);
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+    .db-type-icon {
+      width: 36px; height: 36px;
+      border-radius: var(--radius-sm);
+      background: rgba(255,255,255,0.04);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .db-type-label {
+      font-size: 12px; font-weight: 500;
+      text-align: center; line-height: 1.3;
+    }
+
+    /* ── Form fields ───────────────────────────────────────── */
+    .field { margin-bottom: 14px; }
+    .field-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+    .field-row-3 { display: grid; grid-template-columns: 1fr 90px; gap: 10px; }
+
+    label {
+      display: block;
+      font-size: 11.5px; font-weight: 500;
+      color: var(--text-secondary);
+      letter-spacing: 0.5px; text-transform: uppercase;
+      margin-bottom: 7px;
+    }
+    input[type="text"],
+    input[type="password"],
+    input[type="number"],
+    select {
+      width: 100%;
+      background: var(--bg-elevated);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 13px;
+      color: var(--text-primary);
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      appearance: none;
+    }
+    input::placeholder { color: var(--text-dim); font-family: 'DM Sans', sans-serif; }
+    input:focus, select:focus {
+      border-color: var(--accent-border);
+      box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%238B93A7' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 32px;
+      cursor: pointer;
+    }
+    select option { background: var(--bg-elevated); color: var(--text-primary); }
+
+    /* ── DB dropdown with loading state ────────────────────── */
+    .db-select-wrapper { position: relative; }
+    .db-select-wrapper.loading select { opacity: 0.5; pointer-events: none; }
+    .db-select-wrapper .spinner-inline {
+      position: absolute; right: 36px; top: 50%;
+      transform: translateY(-50%);
+      width: 14px; height: 14px;
+      border: 1.5px solid var(--accent-dim);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+    .db-select-wrapper.loading .spinner-inline { display: block; }
+
+    /* ── Discover button ───────────────────────────────────── */
+    .btn-discover {
+      background: var(--bg-elevated);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 12px; font-weight: 500;
+      padding: 10px 16px;
+      cursor: pointer; white-space: nowrap;
+      transition: all 0.2s ease;
+      display: flex; align-items: center; gap: 6px;
+      font-family: 'DM Sans', sans-serif;
+      align-self: flex-end;
+    }
+    .btn-discover:hover {
+      border-color: var(--accent-border);
+      color: var(--accent);
+    }
+    .btn-discover.loading { opacity: 0.6; pointer-events: none; }
+
+    /* ── Primary button ────────────────────────────────────── */
+    .btn-primary {
+      width: 100%;
+      background: var(--accent);
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 13px;
+      color: white;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px; font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      margin-top: 20px;
+      position: relative; overflow: hidden;
+    }
+    .btn-primary::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, transparent 60%);
+    }
+    .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 8px 24px var(--accent-glow); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.4; pointer-events: none; }
+    .btn-primary.loading { pointer-events: none; }
+
+    .btn-back {
+      background: none; border: none;
+      color: var(--text-secondary); font-size: 13px;
+      cursor: pointer; padding: 8px 0; margin-top: 12px;
+      display: flex; align-items: center; gap: 5px;
+      font-family: 'DM Sans', sans-serif;
+      transition: color 0.2s;
+      width: 100%; justify-content: center;
+    }
+    .btn-back:hover { color: var(--text-primary); }
+
+    /* ── Spinner ───────────────────────────────────────────── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    /* ── Alerts ────────────────────────────────────────────── */
+    .alert {
+      padding: 11px 14px; border-radius: var(--radius-sm);
+      font-size: 13px; line-height: 1.4;
+      display: none; margin-top: 14px;
+      animation: fadeUp 0.2s ease;
+    }
+    .alert.show { display: block; }
+    .alert-error { background: var(--error-dim); border: 1px solid rgba(239,68,68,0.2); color: #FCA5A5; }
+    .alert-success { background: var(--success-dim); border: 1px solid rgba(16,185,129,0.2); color: #6EE7B7; }
+
+    /* ── Connection test badge ─────────────────────────────── */
+    .test-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 14px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-top: 16px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      display: none;
+    }
+    .test-row.show { display: flex; }
+    .test-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .test-dot.ok  { background: var(--success); box-shadow: 0 0 8px var(--success); }
+    .test-dot.err { background: var(--error); }
+    .test-dot.pending {
+      background: var(--accent);
+      animation: pulse 1s ease infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    /* ── DB option chips ───────────────────────────────────── */
+    .db-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .db-chip {
+      padding: 7px 14px;
+      border-radius: 20px;
+      border: 1.5px solid var(--border);
+      background: var(--bg-elevated);
+      font-size: 12.5px; font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-family: 'DM Mono', monospace;
+    }
+    .db-chip:hover { border-color: var(--border-hover); color: var(--text-primary); }
+    .db-chip.selected {
+      border-color: var(--accent-border);
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
+
+    /* ── Divider ───────────────────────────────────────────── */
+    .divider {
+      height: 1px; background: var(--border);
+      margin: 24px 0;
+    }
+
+    /* ── Summary row (step 3) ──────────────────────────────── */
+    .summary-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 10px; margin-bottom: 20px;
+    }
+    .summary-cell {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+    }
+    .summary-cell-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-dim); margin-bottom: 5px; }
+    .summary-cell-value { font-family: 'DM Mono', monospace; font-size: 13px; color: var(--text-primary); }
+
+    /* ── Step panels ───────────────────────────────────────── */
+    .step-panel { display: none; }
+    .step-panel.active {
+      display: block;
+      animation: fadeUp 0.3s ease both;
+    }
+
+    /* ── Footer hint ───────────────────────────────────────── */
+    .footer-hint {
+      text-align: center; margin-top: 20px;
+      font-size: 12px; color: var(--text-dim);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bg-orb bg-orb-1"></div>
+  <div class="bg-orb bg-orb-2"></div>
+  <div class="bg-grid"></div>
+
+  <div class="wrapper">
+
+    <!-- Logo -->
+    <div class="logo">
+      <div class="logo-mark">
+        <svg width="48" height="48" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="lg-setup" x1="8" y1="6" x2="32" y2="34" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#A5B4FC"/>
+              <stop offset="100%" stop-color="#4F46E5"/>
+            </linearGradient>
+            <filter id="gw-setup">
+              <feGaussianBlur stdDeviation="1" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          <circle cx="20" cy="20" r="17" stroke="url(#lg-setup)" stroke-width="1.7" fill="none"/>
+          <path d="M20 3 C11 7 7.5 13 7.5 20 C7.5 27 11 33 20 37" stroke="url(#lg-setup)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M20 3 C23 7 24.5 13 24.5 20 C24.5 27 23 33 20 37" stroke="url(#lg-setup)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M20 3 C29 7 32.5 13 32.5 20 C32.5 27 29 33 20 37" stroke="url(#lg-setup)" stroke-width="1.3" fill="none" stroke-linecap="round" opacity="0.5"/>
+          <path d="M4.5 13 C10 10.5 15 9.5 20 9.5 C25 9.5 30 10.5 35.5 13" stroke="url(#lg-setup)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M3 20 C8 19 14 18.5 20 18.5 C26 18.5 32 19 37 20" stroke="url(#lg-setup)" stroke-width="1.1" fill="none" stroke-linecap="round" opacity="0.35"/>
+          <path d="M4.5 27 C10 29.5 15 30.5 20 30.5 C25 30.5 30 29.5 35.5 27" stroke="url(#lg-setup)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M9 28 C13 23 17 17 24 11" stroke="url(#lg-setup)" stroke-width="1.3" fill="none" stroke-linecap="round" opacity="0.8"/>
+          <circle cx="14.5" cy="12.5" r="2"   fill="#C7D2FE" filter="url(#gw-setup)"/>
+          <circle cx="23"   cy="10.5" r="1.7" fill="#A5B4FC" filter="url(#gw-setup)"/>
+          <circle cx="11"   cy="20"   r="2"   fill="#818CF8" filter="url(#gw-setup)"/>
+          <circle cx="22.5" cy="19"   r="1.8" fill="#C7D2FE" filter="url(#gw-setup)"/>
+          <circle cx="9.5"  cy="27.5" r="1.8" fill="#818CF8" filter="url(#gw-setup)"/>
+          <circle cx="26"   cy="28.5" r="2"   fill="#A5B4FC" filter="url(#gw-setup)"/>
+          <circle cx="19.5" cy="30.5" r="1.5" fill="#818CF8" filter="url(#gw-setup)"/>
+        </svg>
+      </div>
+      <span class="logo-text">Dataloom</span>
+    </div>
+
+    <!-- Step indicator -->
+    <div class="steps">
+      <div class="step-item">
+        <div class="step-dot active" id="dot-1">1</div>
+      </div>
+      <div class="step-line" id="line-1"></div>
+      <div class="step-item">
+        <div class="step-dot" id="dot-2">2</div>
+      </div>
+      <div class="step-line" id="line-2"></div>
+      <div class="step-item">
+        <div class="step-dot" id="dot-3">3</div>
+      </div>
+    </div>
+
+    <!-- Card -->
+    <div class="card">
+
+      <!-- ── Step 1: Database type ── -->
+      <div class="step-panel active" id="step-1">
+        <div class="card-header">
+          <div class="card-title">Connect your database</div>
+          <div class="card-subtitle">Choose the type of database you want to query with natural language.</div>
+        </div>
+
+        <div class="db-type-grid">
+          <button class="db-type-btn" data-type="postgresql" onclick="selectDbType(this)">
+            <div class="db-type-icon">🐘</div>
+            <div class="db-type-label">PostgreSQL</div>
+          </button>
+          <button class="db-type-btn" data-type="mysql" onclick="selectDbType(this)">
+            <div class="db-type-icon">🐬</div>
+            <div class="db-type-label">MySQL / MariaDB</div>
+          </button>
+          <button class="db-type-btn" data-type="sqlite" onclick="selectDbType(this)">
+            <div class="db-type-icon">📁</div>
+            <div class="db-type-label">SQLite</div>
+          </button>
+        </div>
+
+        <div id="alert-1" class="alert alert-error">Please select a database type.</div>
+
+        <button class="btn-primary" onclick="goStep2()">
+          Continue
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2l5 5-5 5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+
+      <!-- ── Step 2: Credentials + Discover ── -->
+      <div class="step-panel" id="step-2">
+        <div class="card-header">
+          <div class="card-title" id="step2-title">Server credentials</div>
+          <div class="card-subtitle" id="step2-subtitle">Enter your connection details. We'll discover available databases automatically.</div>
+        </div>
+
+        <!-- PostgreSQL / MySQL fields -->
+        <div id="fields-server">
+          <div class="field field-row-3">
+            <div>
+              <label>Host</label>
+              <input type="text" id="inp-host" placeholder="localhost" value="localhost" />
+            </div>
+            <div>
+              <label>Port</label>
+              <input type="number" id="inp-port" placeholder="5432" value="5432" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Username</label>
+            <input type="text" id="inp-user" placeholder="postgres" autocomplete="username" />
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" id="inp-pass" placeholder="••••••••" autocomplete="current-password" />
+          </div>
+
+          <div class="divider"></div>
+
+          <label style="margin-bottom:10px;">Databases</label>
+          <div style="display:flex; gap:10px; align-items:flex-end;">
+            <div style="flex:1; position:relative;">
+              <div class="db-chips" id="db-chips">
+                <div style="color:var(--text-dim); font-size:12.5px; padding:6px 0;">
+                  Click "Discover" to load available databases.
+                </div>
+              </div>
+            </div>
+            <button class="btn-discover" id="btn-discover" onclick="discoverDatabases()" style="align-self:flex-start; margin-top:0;">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-width="1.2"/><path d="M8 8l2.5 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+              Discover
+            </button>
+          </div>
+        </div>
+
+        <!-- SQLite fields -->
+        <div id="fields-sqlite" style="display:none;">
+          <div class="field">
+            <label>File Path</label>
+            <input type="text" id="inp-path" placeholder="./database.sqlite" />
+          </div>
+          <div class="card-subtitle" style="margin-top:8px; font-size:12px;">
+            Provide the path to your SQLite file. Relative paths are resolved from the app directory.
+          </div>
+        </div>
+
+        <div id="test-row" class="test-row">
+          <div class="test-dot pending" id="test-dot"></div>
+          <span id="test-msg">Testing connection...</span>
+        </div>
+
+        <div id="alert-2" class="alert alert-error"></div>
+
+        <button class="btn-primary" id="btn-step2-next" onclick="goStep3()">
+          Continue
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2l5 5-5 5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="btn-back" onclick="goStep(1)">← Back</button>
+      </div>
+
+      <!-- ── Step 3: Confirm & Connect ── -->
+      <div class="step-panel" id="step-3">
+        <div class="card-header">
+          <div class="card-title">Ready to connect</div>
+          <div class="card-subtitle">Review your configuration and connect to start querying.</div>
+        </div>
+
+        <div class="summary-grid" id="summary-grid">
+          <!-- Filled by JS -->
+        </div>
+
+        <div id="alert-3" class="alert"></div>
+
+        <button class="btn-primary" id="btn-connect" onclick="doConnect()">
+          <span id="btn-connect-label">Connect & Launch</span>
+          <svg id="btn-connect-icon" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2l5 5-5 5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div class="spinner" id="btn-connect-spinner" style="display:none;"></div>
+        </button>
+        <button class="btn-back" onclick="goStep(2)">← Change settings</button>
+      </div>
+
+    </div><!-- /card -->
+
+    <div class="footer-hint">Your credentials are stored locally and never leave your machine.</div>
+
+  </div><!-- /wrapper -->
+
+<script>
+  // ── State ──────────────────────────────────────────────────────
+  const state = {
+    dbType:   null,
+    host:     'localhost',
+    port:     '5432',
+    user:     '',
+    pass:     '',
+    path:     '',
+    database: null,   // selected from discovered list
+  };
+
+  const DEFAULT_PORTS = { postgresql: '5432', mysql: '3306', sqlite: '' };
+
+  // ── Step navigation ────────────────────────────────────────────
+  function goStep(n) {
+    document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById(`step-${n}`).classList.add('active');
+    updateStepIndicator(n);
+    clearAlerts();
+  }
+
+  function updateStepIndicator(current) {
+    for (let i = 1; i <= 3; i++) {
+      const dot  = document.getElementById(`dot-${i}`);
+      const line = document.getElementById(`line-${i}`);
+      dot.className = 'step-dot';
+      if (i < current) {
+        dot.classList.add('done');
+        if (line) line.classList.add('done');
+      } else if (i === current) {
+        dot.classList.add('active');
+        if (i > 1 && document.getElementById(`line-${i-1}`)) {
+          document.getElementById(`line-${i-1}`).classList.add('done');
+        }
+      }
+    }
+  }
+
+  function clearAlerts() {
+    document.querySelectorAll('.alert').forEach(a => {
+      a.classList.remove('show', 'alert-error', 'alert-success');
+    });
+  }
+
+  function showAlert(id, msg, type = 'error') {
+    const el = document.getElementById(id);
+    el.textContent = msg;
+    el.className = `alert alert-${type} show`;
+  }
+
+  // ── Step 1 ─────────────────────────────────────────────────────
+  function selectDbType(btn) {
+    document.querySelectorAll('.db-type-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    state.dbType = btn.dataset.type;
+  }
+
+  function goStep2() {
+    if (!state.dbType) { showAlert('alert-1', 'Please select a database type.'); return; }
+
+    const isSqlite = state.dbType === 'sqlite';
+    document.getElementById('fields-server').style.display = isSqlite ? 'none' : 'block';
+    document.getElementById('fields-sqlite').style.display = isSqlite ? 'block' : 'none';
+    document.getElementById('step2-title').textContent = isSqlite ? 'SQLite file path' : 'Server credentials';
+    document.getElementById('step2-subtitle').textContent = isSqlite
+      ? 'Point us to your SQLite database file.'
+      : 'Enter your connection details. We\'ll discover available databases automatically.';
+
+    // Update default port
+    if (!isSqlite) {
+      document.getElementById('inp-port').value = DEFAULT_PORTS[state.dbType];
+      document.getElementById('inp-port').placeholder = DEFAULT_PORTS[state.dbType];
+    }
+
+    // Hide test row
+    document.getElementById('test-row').classList.remove('show');
+    state.database = null;
+
+    goStep(2);
+  }
+
+  // ── Discover databases ─────────────────────────────────────────
+  async function discoverDatabases() {
+    const host = document.getElementById('inp-host').value.trim();
+    const port = document.getElementById('inp-port').value.trim();
+    const user = document.getElementById('inp-user').value.trim();
+    const pass = document.getElementById('inp-pass').value;
+
+    if (!host || !user) {
+      showAlert('alert-2', 'Host and username are required to discover databases.');
+      return;
+    }
+
+    // Show loading state
+    const btn = document.getElementById('btn-discover');
+    btn.classList.add('loading');
+    btn.innerHTML = '<div class="spinner" style="width:12px;height:12px;border-width:1.5px;"></div> Searching...';
+
+    const testRow = document.getElementById('test-row');
+    const testDot = document.getElementById('test-dot');
+    const testMsg = document.getElementById('test-msg');
+    testRow.classList.add('show');
+    testDot.className = 'test-dot pending';
+    testMsg.textContent = 'Connecting to server...';
+    clearAlerts();
+
+    try {
+      const res = await fetch('/api/setup/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ db_type: state.dbType, host, port, user, password: pass }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        testDot.className = 'test-dot err';
+        testMsg.textContent = 'Connection failed';
+        showAlert('alert-2', data.error || 'Could not connect to server.');
+        return;
+      }
+
+      // Success — show database chips
+      testDot.className = 'test-dot ok';
+      testMsg.textContent = `Found ${data.databases.length} database${data.databases.length !== 1 ? 's' : ''}`;
+
+      const chips = document.getElementById('db-chips');
+      if (data.databases.length === 0) {
+        chips.innerHTML = '<div style="color:var(--text-dim);font-size:12.5px;">No user databases found.</div>';
+      } else {
+        chips.innerHTML = data.databases.map(db =>
+          `<button class="db-chip" onclick="selectDatabase(this, '${db}')">${db}</button>`
+        ).join('');
+      }
+
+      state.host = host; state.port = port;
+      state.user = user; state.pass = pass;
+
+    } catch (err) {
+      testDot.className = 'test-dot err';
+      testMsg.textContent = 'Network error';
+      showAlert('alert-2', 'Could not reach the server. Is the app running?');
+    } finally {
+      btn.classList.remove('loading');
+      btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-width="1.2"/><path d="M8 8l2.5 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg> Discover`;
+    }
+  }
+
+  function selectDatabase(chip, name) {
+    document.querySelectorAll('.db-chip').forEach(c => c.classList.remove('selected'));
+    chip.classList.add('selected');
+    state.database = name;
+    clearAlerts();
+  }
+
+  // ── Step 2 → 3 ────────────────────────────────────────────────
+  function goStep3() {
+    const isSqlite = state.dbType === 'sqlite';
+
+    if (isSqlite) {
+      const path = document.getElementById('inp-path').value.trim();
+      if (!path) { showAlert('alert-2', 'Please provide the SQLite file path.'); return; }
+      state.path = path;
+      state.database = path;
+    } else {
+      if (!state.database) {
+        showAlert('alert-2', 'Please discover and select a database first.');
+        return;
+      }
+      state.host = document.getElementById('inp-host').value.trim();
+      state.port = document.getElementById('inp-port').value.trim();
+      state.user = document.getElementById('inp-user').value.trim();
+      state.pass = document.getElementById('inp-pass').value;
+    }
+
+    // Build summary
+    const grid = document.getElementById('summary-grid');
+    const dbTypeLabels = { postgresql: 'PostgreSQL', mysql: 'MySQL / MariaDB', sqlite: 'SQLite' };
+    const rows = isSqlite
+      ? [['Type', dbTypeLabels[state.dbType]], ['File', state.path]]
+      : [
+          ['Type',     dbTypeLabels[state.dbType]],
+          ['Host',     `${state.host}:${state.port}`],
+          ['User',     state.user],
+          ['Database', state.database],
+        ];
+
+    grid.innerHTML = rows.map(([label, value]) => `
+      <div class="summary-cell">
+        <div class="summary-cell-label">${label}</div>
+        <div class="summary-cell-value">${value}</div>
+      </div>
+    `).join('');
+
+    goStep(3);
+  }
+
+  // ── Final connect ──────────────────────────────────────────────
+  async function doConnect() {
+    const btn    = document.getElementById('btn-connect');
+    const label  = document.getElementById('btn-connect-label');
+    const icon   = document.getElementById('btn-connect-icon');
+    const spin   = document.getElementById('btn-connect-spinner');
+
+    btn.disabled = true;
+    label.textContent = 'Connecting...';
+    icon.style.display = 'none';
+    spin.style.display = 'block';
+
+    const alert3 = document.getElementById('alert-3');
+    alert3.classList.remove('show');
+
+    const body = {
+      db_type:  state.dbType,
+      host:     state.host,
+      port:     state.port,
+      user:     state.user,
+      password: state.pass,
+      database: state.database,
+      path:     state.path,
+    };
+
+    try {
+      const res  = await fetch('/api/setup/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        showAlert('alert-3', data.error || 'Connection failed. Please check your settings.');
+        btn.disabled = false;
+        label.textContent = 'Connect & Launch';
+        icon.style.display = 'block';
+        spin.style.display = 'none';
+        return;
+      }
+
+      // Success — redirect to main app
+      label.textContent = `Connected to ${data.display_name} — launching...`;
+      await new Promise(r => setTimeout(r, 600));
+      window.location.href = '/';
+
+    } catch (err) {
+      showAlert('alert-3', 'Network error. Please try again.');
+      btn.disabled = false;
+      label.textContent = 'Connect & Launch';
+      icon.style.display = 'block';
+      spin.style.display = 'none';
+    }
+  }
+
+  // ── Pre-fill saved credentials on load ─────────────────────────
+  async function init() {
+    try {
+      const res  = await fetch('/api/setup/status');
+      const data = await res.json();
+      if (data.has_saved_credentials && data.credentials) {
+        const c = data.credentials;
+        // Pre-select DB type
+        const btn = document.querySelector(`[data-type="${c.db_type}"]`);
+        if (btn) selectDbType(btn);
+        // Pre-fill fields
+        if (c.host) document.getElementById('inp-host').value = c.host;
+        if (c.port) document.getElementById('inp-port').value = c.port;
+        if (c.user) document.getElementById('inp-user').value = c.user;
+        if (c.password) document.getElementById('inp-pass').value = c.password;
+        if (c.path) document.getElementById('inp-path').value = c.path;
+      }
+    } catch (_) { /* non-fatal */ }
+  }
+
+  init();
+</script>
+</body>
+</html>
