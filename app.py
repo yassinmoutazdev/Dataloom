@@ -36,6 +36,23 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── Railway DATABASE_URL support ──────────────────────────────────
+# Railway injects DATABASE_URL automatically. Parse it into individual
+# env vars so the rest of the app works without changes.
+_db_url = os.getenv("DATABASE_URL", "")
+if _db_url and _db_url.startswith("postgres"):
+    import re as _re
+    _m = _re.match(
+        r"postgres(?:ql)?://([^:]+):([^@]+)@([^:]+):([\d]+)/(.+)", _db_url
+    )
+    if _m:
+        os.environ.setdefault("DB_TYPE",     "postgresql")
+        os.environ.setdefault("DB_USER",     _m.group(1))
+        os.environ.setdefault("DB_PASSWORD", _m.group(2))
+        os.environ.setdefault("DB_HOST",     _m.group(3))
+        os.environ.setdefault("DB_PORT",     _m.group(4))
+        os.environ.setdefault("DB_NAME",     _m.group(5))
+
 from db_connector import (
     connect_with_credentials,
     discover_databases,
@@ -149,10 +166,52 @@ def _session_is_ready() -> bool:
 
 # ── Page routes ───────────────────────────────────────────────────
 
+def _try_auto_connect():
+    """
+    In DEMO_MODE (or when DATABASE_URL is set), auto-connect the session
+    to the pre-configured database without going through the setup wizard.
+    Called on every request to / before the session is ready.
+    """
+    db_name = os.getenv("DB_NAME")
+    db_type = os.getenv("DB_TYPE", "postgresql")
+    host     = os.getenv("DB_HOST", "localhost")
+    port     = str(os.getenv("DB_PORT", "5432"))
+    user     = os.getenv("DB_USER", "postgres")
+    password = os.getenv("DB_PASSWORD", "")
+
+    if not db_name:
+        return False   # No DB configured — fall through to setup wizard
+
+    try:
+        sess = _get_session()
+        if db_name in sess["contexts"]:
+            sess["active_db"] = db_name
+            return True   # Already connected in this session
+
+        credentials = {
+            "db_type": db_type, "host": host, "port": port,
+            "user": user, "password": password, "dbname": db_name,
+        }
+        conn = connect_with_credentials(db_type, host, port, db_name, user, password)
+        ctx  = _build_context(conn, db_type, credentials)
+        sess["contexts"][db_name] = ctx
+        sess["active_db"] = db_name
+        # Restore any persisted history
+        sid = session.get("sid")
+        if sid:
+            import history_store
+            history_store.restore_into_session(sid, sess["contexts"])
+        return True
+    except Exception:
+        return False
+
+
 @app.route("/")
 def index():
     if not _session_is_ready():
-        return redirect(url_for("setup"))
+        # Try auto-connect from environment (Railway / DEMO_MODE)
+        if not _try_auto_connect():
+            return redirect(url_for("setup"))
     return send_from_directory("templates", "index.html")
 
 
