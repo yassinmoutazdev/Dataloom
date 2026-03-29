@@ -686,6 +686,34 @@ def _call_model(system_prompt: str, user_prompt: str, model_config: dict) -> dic
             response_format={"type": "json_object"},
         )
         raw = response.choices[0].message.content.strip()
+
+    elif provider == "gemini":
+        # Gemini exposes an OpenAI-compatible endpoint — no new library needed.
+        if openai is None:
+            raise RuntimeError(
+                "MODEL_PROVIDER is 'gemini' but the 'openai' package is not installed. "
+                "Run: pip install openai"
+            )
+        if not model_config.get("api_key"):
+            raise RuntimeError(
+                "MODEL_PROVIDER is 'gemini' but GEMINI_API_KEY is missing from .env"
+            )
+        client = openai.OpenAI(
+            api_key=model_config["api_key"],
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            timeout=60.0,
+        )
+        response = client.chat.completions.create(
+            model=model_config["model"],          # e.g. gemini-2.5-flash-lite-preview-06-17
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_prompt},
+            ],
+            temperature=0,
+            response_format={"type": "json_object"},
+        )
+        raw = response.choices[0].message.content.strip()
+
     else:
         response = ollama.chat(
             model=model_config["model"],

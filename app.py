@@ -92,6 +92,12 @@ def _default_model_config() -> dict:
             "model":    os.getenv("OPENAI_MODEL", "gpt-4o"),
             "api_key":  os.getenv("OPENAI_API_KEY", ""),
         }
+    if provider == "gemini":
+        return {
+            "provider": "gemini",
+            "model":    os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite-preview-06-17"),
+            "api_key":  os.getenv("GEMINI_API_KEY", ""),
+        }
     return {"provider": "ollama", "model": os.getenv("OLLAMA_MODEL", "mistral")}
 
 
