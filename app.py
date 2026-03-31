@@ -144,8 +144,11 @@ def _get_active_context() -> dict | None:
 
 
 def _clean_db_name(raw: str) -> str:
-    """'olist_logistics' → 'Olist Logistics'"""
-    return re.sub(r"[_\-]+", " ", raw).title()
+    """'olist_logistics' → 'Olist Logistics'. Overridable via DB_DISPLAY_NAME env var."""
+    override = os.getenv("DB_DISPLAY_NAME", "").strip()
+    if override:
+        return override
+    return re.sub(r"[_-]+", " ", raw).title()
 
 
 def _build_context(conn, db_type: str, credentials: dict) -> dict:
