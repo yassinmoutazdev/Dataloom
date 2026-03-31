@@ -2183,13 +2183,6 @@ function closeWelcome() {
   // Remember for this session so it doesn't re-show on every page load
   try { sessionStorage.setItem('dl_welcomed', '1'); } catch(e) {}
 }
-// Show on first load of each session (not on every refresh)
-(function() {
-  try {
-    if (!sessionStorage.getItem('dl_welcomed')) showWelcome();
-  } catch(e) { showWelcome(); }
-})();
-
 // Keyboard shortcut: Escape to close modal
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeSettings();
@@ -2201,7 +2194,12 @@ async function goHome() {
   await loadHistory();
 }
 
-init();
+init().then(() => {
+  // Show welcome modal after init so DOM elements exist
+  try {
+    if (!sessionStorage.getItem('dl_welcomed')) showWelcome();
+  } catch(e) { showWelcome(); }
+});
 </script>
 
 <!-- ── Welcome Modal ──────────────────────────────────────────────────── -->
