@@ -62,6 +62,23 @@
   ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
 
   /* ═══════════════════════════════════════════════════════════
+     MOBILE OVERLAY
+  ═══════════════════════════════════════════════════════════ */
+  .mobile-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 998;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-overlay.active {
+    opacity: 1;
+  }
+
+  /* ═══════════════════════════════════════════════════════════
      SIDEBAR
   ═══════════════════════════════════════════════════════════ */
   .sidebar {
@@ -72,10 +89,10 @@
     display: flex;
     flex-direction: column;
     height: 100vh;
-    transition: width var(--transition), min-width var(--transition);
+    transition: width var(--transition), min-width var(--transition), transform 0.3s ease;
     overflow: hidden;
     position: relative;
-    z-index: 10;
+    z-index: 999;
     flex-shrink: 0;
   }
   .sidebar.collapsed {
@@ -127,6 +144,34 @@
   .sidebar.collapsed .sidebar-toggle { margin-left: 0; }
   .sidebar-toggle:hover { background: var(--bg-elevated); color: var(--text-primary); }
 
+  /* Mobile hamburger button */
+  .mobile-menu-btn {
+    display: none;
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    width: 40px;
+    height: 40px;
+    border: none;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    z-index: 1000;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--transition);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-menu-btn:hover {
+    background: var(--bg-elevated);
+  }
+  .mobile-menu-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+
   /* Nav sections */
   .sidebar-section {
     padding: 8px 8px 0;
@@ -153,6 +198,7 @@
     font-size: 13.5px; font-weight: 400;
     border: none; background: none; width: 100%; text-align: left;
     position: relative;
+    -webkit-tap-highlight-color: transparent;
   }
   .nav-item:hover { background: var(--bg-elevated); color: var(--text-primary); }
   .nav-item.active { background: var(--accent-dim); color: var(--accent); }
@@ -169,2103 +215,996 @@
     position: absolute; left: calc(100% + 8px); top: 50%;
     transform: translateY(-50%);
     background: var(--bg-elevated); border: 1px solid var(--border-md);
-    color: var(--text-primary); font-size: 12px; padding: 4px 10px;
-    border-radius: var(--radius-sm); white-space: nowrap;
-    pointer-events: none; z-index: 100;
-    opacity: 0; animation: tipIn 0.15s 0.4s ease forwards;
+    border-radius: var(--radius-sm); padding: 4px 10px;
+    font-size: 11.5px; white-space: nowrap; z-index: 1000;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
   }
-  @keyframes tipIn { to { opacity: 1; } }
-  .sidebar:not(.collapsed) .nav-item[data-tip]:hover::after { display: none; }
-
-  /* DB switcher in sidebar */
-  .db-switcher {
-    margin: 6px 8px 0;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    background: var(--bg-elevated);
-    overflow: hidden;
-    flex-shrink: 0;
-  }
-  .db-switcher-header {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 10px;
-    cursor: pointer;
-    transition: background var(--transition);
-  }
-  .db-switcher-header:hover { background: rgba(255,255,255,0.03); }
-  .db-dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--success); flex-shrink: 0;
-    box-shadow: 0 0 6px var(--success);
-  }
-  .db-name-text {
-    font-size: 12.5px; font-weight: 500; flex: 1;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    opacity: 1; transition: opacity var(--transition);
-  }
-  .sidebar.collapsed .db-name-text { opacity: 0; }
-  .db-switcher-list { display: none; border-top: 1px solid var(--border); }
-  .db-switcher-list.open { display: block; }
-  .db-list-item {
-    display: flex; align-items: center; gap: 8px;
-    padding: 7px 10px; cursor: pointer; font-size: 12px;
-    color: var(--text-secondary); transition: background var(--transition);
-  }
-  .db-list-item:hover { background: var(--bg-card); color: var(--text-primary); }
-  .db-list-item.active { color: var(--accent); }
-  .db-list-add {
-    padding: 7px 10px; font-size: 12px; color: var(--text-dim);
-    cursor: pointer; border-top: 1px solid var(--border);
-    transition: color var(--transition);
-    display: flex; align-items: center; gap: 6px;
-  }
-  .db-list-add:hover { color: var(--text-primary); }
-
-  /* History panel */
-  .history-panel {
-    flex: 1; overflow-y: auto; padding: 8px 8px 0;
-    min-height: 0;
-  }
-  .sidebar.collapsed .history-panel { overflow: hidden; }
-  .history-empty {
-    padding: 8px 16px; font-size: 12px; color: var(--text-dim);
-    white-space: nowrap; overflow: hidden;
-    opacity: 1; transition: opacity var(--transition);
-  }
-  .sidebar.collapsed .history-empty { opacity: 0; }
-  .history-clear-btn {
-    display: flex; align-items: center; gap: 4px;
-    font-size: 11px; font-weight: 500; color: var(--text-dim);
-    background: none; border: none; cursor: pointer;
-    padding: 2px 4px; border-radius: 3px;
-    transition: color var(--transition);
-    font-family: 'DM Sans', sans-serif;
-    opacity: 0.7;
-  }
-  .history-clear-btn:hover { color: #F87171; opacity: 1; }
-  .sidebar.collapsed .history-clear-btn { opacity: 0; pointer-events: none; }
-  .history-item {
-    padding: 7px 8px; border-radius: var(--radius-sm);
-    cursor: pointer; font-size: 12.5px;
-    color: var(--text-secondary);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    transition: background var(--transition), color var(--transition);
-    display: flex; align-items: center; gap: 7px;
-  }
-  .history-item:hover { background: var(--bg-elevated); color: var(--text-primary); }
-  .history-item svg { flex-shrink: 0; opacity: 0.5; width: 12px; height: 12px; }
-
-  /* Sidebar bottom */
-  .sidebar-bottom {
-    flex-shrink: 0;
-    padding: 8px;
-    border-top: 1px solid var(--border);
-  }
-
-  /* Model selector — lives in header */
-  .model-selector {
-    display: flex; align-items: center; gap: 7px;
-    padding: 5px 10px 5px 8px;
-    border-radius: var(--radius-sm);
-    cursor: pointer; transition: all var(--transition);
-    position: relative;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-  }
-  .model-selector:hover { border-color: var(--accent-border); }
-  .model-pill {
-    font-size: 12px; font-weight: 500;
-    color: var(--text-primary);
-    white-space: nowrap; max-width: 120px;
-    overflow: hidden; text-overflow: ellipsis;
-  }
-  .model-caret {
-    color: var(--text-dim);
-    flex-shrink: 0;
-    transition: transform var(--transition);
-  }
-  .model-selector.open .model-caret { transform: rotate(180deg); }
-
-  /* Model dropdown — opens downward from header */
-  .model-dropdown {
-    position: absolute; top: calc(100% + 6px); right: 0;
-    background: var(--bg-elevated); border: 1px solid var(--border-md);
-    border-radius: var(--radius); padding: 6px;
-    display: none; z-index: 200; min-width: 200px;
-    box-shadow: 0 16px 40px rgba(0,0,0,0.5);
-    animation: fadeDown 0.15s ease;
-  }
-  @keyframes fadeDown {
-    from { opacity: 0; transform: translateY(-6px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  .model-dropdown.open { display: block; }
-  .model-dropdown-header {
-    font-size: 10px; text-transform: uppercase; letter-spacing: 0.7px;
-    color: var(--text-dim); padding: 4px 8px 8px; font-weight: 600;
-  }
-  .model-option {
-    padding: 7px 10px; border-radius: var(--radius-sm);
-    font-size: 13px; color: var(--text-secondary);
-    cursor: pointer; transition: background var(--transition);
-    display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  }
-  .model-option:hover { background: rgba(255,255,255,0.04); color: var(--text-primary); }
-  .model-option.current { color: var(--text-primary); }
-  .model-option-check {
-    width: 14px; height: 14px; flex-shrink: 0;
+  .sidebar:not(.collapsed) .nav-item[data-tip]:hover::after {
     display: none;
   }
-  .model-option.current .model-option-check { display: block; color: var(--accent); }
+
+  /* Scrollable nav content */
+  .sidebar-content {
+    flex: 1; overflow-y: auto; overflow-x: hidden;
+  }
+
+  /* Sidebar footer */
+  .sidebar-footer {
+    padding: 10px 8px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
 
   /* ═══════════════════════════════════════════════════════════
-     MAIN AREA
+     MAIN CONTENT
   ═══════════════════════════════════════════════════════════ */
   .main {
-    flex: 1; display: flex; flex-direction: column;
-    min-width: 0; height: 100vh; overflow: hidden;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
   }
 
   /* Header */
   .header {
-    height: var(--header-h); flex-shrink: 0;
-    display: flex; align-items: center;
-    padding: 0 20px; gap: 12px;
-    border-bottom: 1px solid var(--border);
+    height: var(--header-h);
     background: var(--bg-surface);
-  }
-  /* Wordmark group — logo SVG + Dataloom text */
-  .header-wordmark {
-    display: flex; align-items: center; gap: 9px;
-    flex-shrink: 0;
-    border-radius: var(--radius-sm);
-    padding: 4px 6px;
-    margin-left: -6px;
-    transition: opacity var(--transition);
-  }
-  .header-wordmark:hover { opacity: 0.8; }
-  .header-logo-svg {
-    filter: drop-shadow(0 0 8px rgba(79,70,229,0.4));
-    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
     display: flex; align-items: center;
-  }
-  .header-brand-name {
-    font-family: 'Syne', sans-serif;
-    font-size: 15px; font-weight: 700;
-    letter-spacing: -0.3px;
-    color: var(--text-primary);
-    white-space: nowrap;
-  }
-  .header-db-badge {
-    display: flex; align-items: center; gap: 7px;
-    background: var(--bg-elevated); border: 1px solid var(--border);
-    border-radius: var(--radius-sm); padding: 4px 10px;
-    font-size: 12.5px; font-weight: 500; color: var(--text-secondary);
-    cursor: pointer; transition: border-color var(--transition);
-    position: relative;
-  }
-  .header-db-badge:hover { border-color: var(--border-md); color: var(--text-primary); }
-  .header-db-badge .db-dot { width: 6px; height: 6px; }
-  .header-spacer { flex: 1; }
-  .header-btn {
-    width: 30px; height: 30px;
-    background: none; border: 1px solid var(--border);
-    border-radius: var(--radius-sm); cursor: pointer;
-    color: var(--text-secondary);
-    display: flex; align-items: center; justify-content: center;
-    transition: all var(--transition);
-  }
-  .header-btn:hover { background: var(--bg-elevated); color: var(--text-primary); border-color: var(--border-md); }
-  .header-btn svg { width: 15px; height: 15px; }
-
-  /* ═══════════════════════════════════════════════════════════
-     CHAT AREA
-  ═══════════════════════════════════════════════════════════ */
-  .chat-area {
-    flex: 1; overflow-y: auto; overflow-x: hidden;
-    padding: 24px 0 12px;
-    display: flex; flex-direction: column;
-    min-height: 0;
-  }
-  .chat-inner {
-    width: 100%; max-width: 740px;
-    margin: 0 auto; padding: 0 24px;
-    display: flex; flex-direction: column;
-    gap: 24px;
-  }
-
-  /* ── Empty state ───────────────────────────────────────────── */
-  .empty-state {
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    flex: 1; padding: 60px 0;
-    text-align: center;
-  }
-  .empty-icon {
-    width: 80px; height: 80px;
-    display: flex; align-items: center; justify-content: center;
-    margin-bottom: 24px;
+    padding: 0 20px;
+    gap: 10px;
     flex-shrink: 0;
   }
-  .empty-icon svg { display: block; width: 72px; height: 72px; }
-  .empty-title {
+  .header-title {
     font-family: 'Syne', sans-serif;
-    font-size: 22px; font-weight: 700; letter-spacing: -0.4px;
-    color: var(--text-primary); margin-bottom: 8px;
+    font-size: 15px; font-weight: 600;
+    color: var(--text-primary);
+    flex-shrink: 0;
   }
-  .empty-sub {
-    font-size: 13.5px; color: var(--text-secondary);
-    max-width: 360px; line-height: 1.6; margin-bottom: 28px;
-    font-weight: 300;
+  .header-actions {
+    margin-left: auto;
+    display: flex; gap: 8px;
   }
-  .empty-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
-  .chip {
-    padding: 8px 16px; border-radius: 20px;
+  .header-btn {
+    padding: 6px 14px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border);
     background: var(--bg-elevated);
-    font-size: 12.5px; color: var(--text-secondary);
-    cursor: pointer; transition: all var(--transition);
+    color: var(--text-secondary);
+    font-size: 12.5px; font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition);
+    white-space: nowrap;
+    display: flex; align-items: center; gap: 6px;
+    -webkit-tap-highlight-color: transparent;
   }
-  .chip:hover {
-    border-color: var(--accent-border);
-    background: var(--accent-dim);
-    color: var(--accent);
-    transform: translateY(-1px);
+  .header-btn:hover { background: var(--bg-card); color: var(--text-primary); }
+  .header-btn.primary {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
+  .header-btn.primary:hover { background: var(--accent-hover); }
+  .header-btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+
+  /* Content area */
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 24px;
+    background: var(--bg-base);
   }
 
-  /* ── Messages ──────────────────────────────────────────────── */
-  .msg { display: flex; gap: 12px; animation: fadeUp 0.25s ease; }
+  /* ─────────────────── Page layouts ─────────────────── */
+  .page-home { max-width: 880px; margin: 0 auto; }
+  .page-chat { max-width: 920px; margin: 0 auto; }
+  .page-settings { max-width: 760px; margin: 0 auto; }
 
-  .msg-avatar {
-    width: 28px; height: 28px; border-radius: 50%;
-    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  /* ─────────────────── History Chips ─────────────────── */
+  .history-header {
     font-size: 11px; font-weight: 600;
-    margin-top: 2px;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin-bottom: 12px;
   }
-  .msg-avatar.user { background: var(--accent); color: white; }
-  .msg-avatar.ai {
-    background: none; border: none;
-    width: 28px; height: 28px; flex-shrink: 0; margin-top: 2px;
-    display: flex; align-items: center; justify-content: center;
+  .history-chips {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 32px;
   }
-  .msg-avatar.ai svg { width: 28px !important; height: 28px !important; display: block; }
-
-  .msg-body { flex: 1; min-width: 0; }
-  .msg-role {
-    font-size: 11px; font-weight: 500; text-transform: uppercase;
-    letter-spacing: 0.6px; color: var(--text-dim);
-    margin-bottom: 6px;
+  .history-chip {
+    padding: 8px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all var(--transition);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    -webkit-tap-highlight-color: transparent;
   }
-  .msg-text {
-    font-size: 14px; line-height: 1.65; color: var(--text-primary);
-  }
-  .msg-text.user {
-    background: var(--bg-elevated); border: 1px solid var(--border);
-    border-radius: 4px var(--radius-lg) var(--radius-lg) var(--radius-lg);
-    padding: 10px 14px; display: inline-block; max-width: 100%;
-  }
-
-  /* Clarification / error messages */
-  .msg-clarification {
-    background: var(--warn-dim); border: 1px solid rgba(245,158,11,0.2);
-    border-radius: var(--radius-sm); padding: 10px 14px;
-    font-size: 13.5px; color: #FCD34D; line-height: 1.5;
-  }
-  .msg-error {
-    background: var(--error-dim); border: 1px solid rgba(239,68,68,0.2);
-    border-radius: var(--radius-sm); padding: 10px 14px;
-    font-size: 13.5px; color: #FCA5A5; line-height: 1.5;
+  .history-chip:hover {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border-color: var(--border-md);
   }
 
-  /* Summary text */
-  .msg-summary {
-    font-size: 14px; line-height: 1.65; color: var(--text-primary);
-    margin-bottom: 10px;
+  /* ─────────────────── Input Bar ─────────────────── */
+  .input-bar {
+    background: var(--bg-surface);
+    border: 1.5px solid var(--border-md);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: border-color var(--transition);
+    margin-bottom: 16px;
   }
-
-  /* SQL toggle */
-  .sql-toggle {
-    display: inline-flex; align-items: center; gap: 5px;
-    font-size: 11.5px; font-weight: 500; color: var(--text-dim);
-    background: none; border: 1px solid var(--border);
-    border-radius: 4px; padding: 3px 8px; cursor: pointer;
-    margin-bottom: 10px; transition: all var(--transition);
+  .input-bar:focus-within {
+    border-color: var(--accent-border);
+  }
+  .input-bar textarea {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
     font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    resize: none;
+    outline: none;
+    min-height: 22px;
+    max-height: 200px;
   }
-  .sql-toggle:hover { border-color: var(--border-md); color: var(--text-secondary); }
-  .sql-toggle.open { border-color: var(--accent-border); color: var(--accent); background: var(--accent-dim); }
-
-  .export-wrap { display: inline-flex; align-items: center; position: relative; margin-left: 6px; margin-bottom: 10px; }
-  .export-btn {
-    display: inline-flex; align-items: center; gap: 5px;
-    font-size: 11.5px; font-weight: 500; color: var(--text-dim);
-    background: none; border: 1px solid var(--border);
-    border-radius: 4px; padding: 3px 8px; cursor: pointer;
-    transition: all var(--transition); font-family: 'DM Sans', sans-serif;
+  .input-bar textarea::placeholder {
+    color: var(--text-dim);
   }
-  .export-btn:hover { border-color: rgba(16,185,129,0.4); color: #34D399; background: rgba(16,185,129,0.07); }
-  .export-dropdown {
-    display: none; position: absolute; top: calc(100% + 4px); left: 0;
-    background: var(--bg-elevated); border: 1px solid var(--border-md);
-    border-radius: var(--radius-sm); z-index: 100; min-width: 140px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.3); overflow: hidden;
-  }
-  .export-wrap.open .export-dropdown { display: block; }
-  .export-dropdown button {
-    display: flex; align-items: center; gap: 8px; width: 100%;
-    padding: 8px 12px; font-size: 12px; font-weight: 500;
-    color: var(--text-secondary); background: none; border: none;
-    cursor: pointer; text-align: left; font-family: 'DM Sans', sans-serif;
+  .send-btn {
+    width: 32px; height: 32px;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
     transition: background var(--transition);
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
   }
-  .export-dropdown button:hover { background: var(--bg-card); color: var(--text-primary); }
+  .send-btn:hover:not(:disabled) { background: var(--accent-hover); }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .send-btn svg { width: 16px; height: 16px; }
 
-  /* Corrected badge */
-  .badge-corrected {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-size: 10.5px; font-weight: 500;
-    background: var(--success-dim); color: var(--success);
-    border: 1px solid rgba(16,185,129,0.2);
-    border-radius: 12px; padding: 2px 8px; margin-left: 8px;
+  /* ─────────────────── Chat Messages ─────────────────── */
+  .chat-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding-bottom: 20px;
   }
-
-  /* Confidence badge */
-  .badge-confidence {
-    display: inline-flex; align-items: center; gap: 5px;
-    font-size: 10.5px; font-weight: 600; letter-spacing: 0.05em;
-    border-radius: 12px; padding: 2px 9px; margin-right: 6px;
-    text-transform: uppercase;
-    animation: badgePop 0.22s cubic-bezier(0.34,1.56,0.64,1) both;
+  .message {
+    display: flex;
+    gap: 12px;
   }
-  .badge-confidence .conf-dot {
-    width: 5px; height: 5px; border-radius: 50%;
-    background: currentColor; flex-shrink: 0;
+  .message-avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--bg-elevated);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
   }
-  .badge-confidence.high {
-    background: rgba(16,185,129,0.1); color: #34D399;
-    border: 1px solid rgba(16,185,129,0.25);
+  .message-avatar.user {
+    background: var(--accent-dim);
+    border-color: var(--accent-border);
+    color: var(--accent);
   }
-  .badge-confidence.medium {
-    background: rgba(245,158,11,0.1); color: #FBBF24;
-    border: 1px solid rgba(245,158,11,0.25);
+  .message-avatar svg { width: 16px; height: 16px; }
+  .message-content {
+    flex: 1;
+    min-width: 0;
   }
-  .badge-confidence.low {
-    background: rgba(239,68,68,0.1); color: #F87171;
-    border: 1px solid rgba(239,68,68,0.25);
+  .message-text {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-primary);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
-  @keyframes badgePop {
-    from { transform: scale(0.7); opacity: 0; }
-    to   { transform: scale(1);   opacity: 1; }
-  }
-
-  /* Medium-confidence assumption warning */
-  .msg-assumption {
-    background: rgba(245,158,11,0.07); border: 1px solid rgba(245,158,11,0.2);
-    border-radius: var(--radius-sm); padding: 8px 12px;
-    font-size: 12.5px; color: #FCD34D; line-height: 1.5;
-    margin-bottom: 10px;
-  }
-
-  /* SQL code block */
-  .sql-block {
-    background: var(--bg-input); border: 1px solid var(--border);
-    border-radius: var(--radius-sm); padding: 12px 14px;
-    font-family: 'DM Mono', monospace; font-size: 12.5px;
-    line-height: 1.6; color: var(--text-secondary);
-    white-space: pre-wrap; word-break: break-all;
-    margin-bottom: 10px; display: none;
+  .message-sql {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    margin: 10px 0;
+    font-family: 'DM Mono', monospace;
+    font-size: 12.5px;
+    color: var(--text-secondary);
     overflow-x: auto;
   }
-  .sql-block.open { display: block; }
-  /* SQL syntax colors */
-  .sql-kw { color: #818CF8; font-weight: 500; }
-  .sql-tbl { color: #67E8F9; }
-  .sql-fn  { color: #FDE68A; }
-  .sql-num { color: #86EFAC; }
 
-  /* ── Result table ──────────────────────────────────────────── */
-  .result-card {
+  /* ─────────────────── Data Table ─────────────────── */
+  .data-table-container {
+    margin: 12px 0;
     border: 1px solid var(--border);
-    border-radius: var(--radius-lg); overflow: hidden;
-    background: var(--bg-card);
-  }
-  .result-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-elevated);
-  }
-  .result-meta {
-    font-size: 11.5px; color: var(--text-dim); font-family: 'DM Mono', monospace;
-  }
-  .result-pagination {
-    display: flex; align-items: center; gap: 6px;
-  }
-  .pg-btn {
-    background: none; border: 1px solid var(--border);
-    border-radius: 4px; color: var(--text-secondary);
-    font-size: 11.5px; padding: 2px 8px; cursor: pointer;
-    transition: all var(--transition); font-family: 'DM Sans', sans-serif;
-  }
-  .pg-btn:hover { border-color: var(--border-md); color: var(--text-primary); }
-  .pg-btn:disabled { opacity: 0.3; pointer-events: none; }
-  .pg-info { font-size: 11.5px; color: var(--text-dim); font-family: 'DM Mono', monospace; }
-
-  /* Table */
-  .result-table-wrap { overflow-x: auto; }
-  table {
-    width: 100%; border-collapse: collapse;
-    font-size: 12.5px;
-  }
-  thead tr {
-    background: var(--accent-dim);
-    border-bottom: 1px solid var(--accent-border);
-  }
-  th {
-    padding: 8px 12px; text-align: left;
-    font-size: 11px; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.5px; color: var(--accent);
-    white-space: nowrap; font-family: 'DM Sans', sans-serif;
-  }
-  td {
-    padding: 8px 12px; color: var(--text-secondary);
-    border-bottom: 1px solid var(--border);
-    font-family: 'DM Mono', monospace;
-    white-space: nowrap; max-width: 240px;
-    overflow: hidden; text-overflow: ellipsis;
-  }
-  td.num { text-align: right; color: var(--text-primary); }
-  tbody tr:last-child td { border-bottom: none; }
-  tbody tr:hover td { background: rgba(255,255,255,0.015); }
-
-  /* ── Thinking indicator — dots (kept for layout, hidden visually) ── */
-  /* ═══════════════════════════════════════════════════════════
-     THINKING DOTS
-  ═══════════════════════════════════════════════════════════ */
-  .thinking {
-    display: flex; gap: 5px; align-items: center;
-    padding: 4px 0;
-  }
-  .thinking-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--accent); opacity: 0.4;
-    animation: blink 1.2s ease infinite;
-  }
-  .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
-  .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes blink { 0%,100%{opacity:0.2} 50%{opacity:1} }
-
-  /* ═══════════════════════════════════════════════════════════
-     GRID WEAVE — Data Weaver animation on thinking avatar
-     All animations use opacity + filter only (cross-browser safe)
-  ═══════════════════════════════════════════════════════════ */
-
-  /* Container glow pulses on the whole avatar */
-  @keyframes weaverGlow {
-    0%,100% { filter: drop-shadow(0 0 4px rgba(79,70,229,0.5)); }
-    50%      { filter: drop-shadow(0 0 12px rgba(79,70,229,0.9)); }
-  }
-  .thinking-active {
-    animation: weaverGlow 2s ease-in-out infinite;
-  }
-
-  /* Outer circle breathes */
-  @keyframes outerBreath {
-    0%,100% { opacity: 0.5; }
-    50%      { opacity: 1;   }
-  }
-
-  /* Longitude stripes — alt pair weave A/B */
-  @keyframes weaveA {
-    0%     { opacity: 0.1; }
-    25%    { opacity: 1;   }
-    50%    { opacity: 0.15;}
-    75%    { opacity: 0.9; }
-    100%   { opacity: 0.1; }
-  }
-  @keyframes weaveB {
-    0%     { opacity: 1;   }
-    25%    { opacity: 0.1; }
-    50%    { opacity: 0.9; }
-    75%    { opacity: 0.15;}
-    100%   { opacity: 1;   }
-  }
-
-  /* Latitude arcs — slower cross-fade */
-  @keyframes latA {
-    0%,100% { opacity: 0.15; }
-    40%,60% { opacity: 1;    }
-  }
-  @keyframes latB {
-    0%,100% { opacity: 1;    }
-    40%,60% { opacity: 0.15; }
-  }
-
-  /* Diagonal sweep — slow independent cycle */
-  @keyframes diagSweep {
-    0%,100% { opacity: 0.08; }
-    30%,55% { opacity: 1;    }
-    80%     { opacity: 0.15; }
-  }
-
-  /* Node dots — sequential cascade glow */
-  @keyframes nodeCascade {
-    0%,100% { opacity: 0.2; }
-    50%      { opacity: 1;   }
-  }
-
-  /* Apply to each SVG child of .thinking-active */
-  /* circle:first-of-type = outer ring */
-  .thinking-active svg circle:first-of-type {
-    animation: outerBreath 2s ease-in-out infinite;
-  }
-  /* path 1,2,3 = longitude arcs */
-  .thinking-active svg path:nth-of-type(1) {
-    animation: weaveA 2.4s ease-in-out infinite 0s;
-  }
-  .thinking-active svg path:nth-of-type(2) {
-    animation: weaveB 2.4s ease-in-out infinite 0.3s;
-  }
-  .thinking-active svg path:nth-of-type(3) {
-    animation: weaveA 2.4s ease-in-out infinite 0.6s;
-  }
-  /* path 4,5,6 = latitude arcs */
-  .thinking-active svg path:nth-of-type(4) {
-    animation: latA 2s ease-in-out infinite 0.2s;
-  }
-  .thinking-active svg path:nth-of-type(5) {
-    animation: latB 2s ease-in-out infinite 0.5s;
-  }
-  .thinking-active svg path:nth-of-type(6) {
-    animation: latA 2s ease-in-out infinite 0.8s;
-  }
-  /* path 7 = diagonal */
-  .thinking-active svg path:nth-of-type(7) {
-    animation: diagSweep 3.2s ease-in-out infinite 0.1s;
-  }
-  /* circles 2–4 (node dots in makeLogoSm) — cascade stagger */
-  .thinking-active svg circle:nth-of-type(2) {
-    animation: nodeCascade 1.8s ease-in-out infinite 0s;
-  }
-  .thinking-active svg circle:nth-of-type(3) {
-    animation: nodeCascade 1.8s ease-in-out infinite 0.6s;
-  }
-  .thinking-active svg circle:nth-of-type(4) {
-    animation: nodeCascade 1.8s ease-in-out infinite 1.2s;
-  }
-
-
-
-  /* ═══════════════════════════════════════════════════════════
-     INPUT BAR
-  ═══════════════════════════════════════════════════════════ */
-  .input-wrap {
-    flex-shrink: 0; padding: 12px 24px 20px;
-    border-top: 1px solid var(--border);
+    border-radius: var(--radius);
     background: var(--bg-surface);
-  }
-  .input-inner {
-    max-width: 740px; margin: 0 auto;
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    display: flex; align-items: flex-end; gap: 0;
-    transition: border-color var(--transition), box-shadow var(--transition);
-  }
-  .input-inner:focus-within {
-    border-color: var(--accent-border);
-    box-shadow: 0 0 0 3px var(--accent-dim);
-  }
-  #question-input {
-    flex: 1; background: none; border: none; outline: none;
-    padding: 12px 14px; color: var(--text-primary);
-    font-family: 'DM Sans', sans-serif; font-size: 14px;
-    line-height: 1.5; resize: none; min-height: 46px;
-    max-height: 180px; overflow-y: auto;
-  }
-  #question-input::placeholder { color: var(--text-dim); }
-  .send-btn {
-    margin: 7px 8px 7px 0;
-    width: 32px; height: 32px;
-    background: var(--accent); border: none; border-radius: 8px;
-    cursor: pointer; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    transition: background var(--transition), transform var(--transition), box-shadow var(--transition);
-    color: white;
-  }
-  .send-btn:hover { background: var(--accent-hover); transform: scale(1.05); box-shadow: 0 4px 14px var(--accent-glow); }
-  .send-btn:disabled { opacity: 0.35; pointer-events: none; }
-  .send-btn svg { width: 15px; height: 15px; }
-  .input-hint {
-    max-width: 740px; margin: 6px auto 0;
-    font-size: 11px; color: var(--text-dim); text-align: center;
-  }
-
-  /* ── Animations ────────────────────────────────────────────── */
-  @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-
-  /* ═══════════════════════════════════════════════════════════
-     SETTINGS MODAL
-  ═══════════════════════════════════════════════════════════ */
-  .modal-overlay {
-    position: fixed; inset: 0; z-index: 1000;
-    background: rgba(0,0,0,0.65);
-    backdrop-filter: blur(4px);
-    display: flex; align-items: center; justify-content: center;
-    padding: 24px;
-    opacity: 0; pointer-events: none;
-    transition: opacity 0.2s ease;
-  }
-  .modal-overlay.open { opacity: 1; pointer-events: all; }
-
-  .modal {
-    background: #0E1117;
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 18px;
-    width: 100%; max-width: 620px;
-    max-height: 85vh;
-    display: flex; flex-direction: column;
-    box-shadow: 0 32px 80px rgba(0,0,0,0.7);
-    transform: translateY(12px);
-    transition: transform 0.2s ease;
     overflow: hidden;
   }
-  .modal-overlay.open .modal { transform: translateY(0); }
+  .data-table-header {
+    padding: 10px 14px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .data-table-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+  .data-table-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .table-action-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all var(--transition);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .table-action-btn:hover {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+  }
+  .table-action-btn svg {
+    width: 11px;
+    height: 11px;
+  }
+  .data-table-scroll {
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 400px;
+  }
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .data-table th {
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    white-space: nowrap;
+  }
+  .data-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+  }
+  .data-table tr:last-child td {
+    border-bottom: none;
+  }
+  .data-table tr:hover {
+    background: var(--bg-elevated);
+  }
 
+  /* ─────────────────── Loading ─────────────────── */
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* ─────────────────── Modal ─────────────────── */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+    padding: 20px;
+  }
+  .modal-overlay.visible {
+    opacity: 1;
+    pointer-events: all;
+  }
+  .modal {
+    background: var(--bg-card);
+    border: 1px solid var(--border-md);
+    border-radius: var(--radius-xl);
+    width: 100%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+    transform: scale(0.95);
+    transition: transform 0.25s ease;
+  }
+  .modal-overlay.visible .modal {
+    transform: scale(1);
+  }
   .modal-header {
-    display: flex; align-items: center; gap: 12px;
-    padding: 20px 24px 0;
-    flex-shrink: 0;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   }
   .modal-title {
     font-family: 'Syne', sans-serif;
-    font-size: 17px; font-weight: 700; letter-spacing: -0.3px;
-    flex: 1;
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text-primary);
   }
   .modal-close {
-    width: 28px; height: 28px; border-radius: 50%;
-    background: rgba(255,255,255,0.06); border: none;
-    color: var(--text-secondary); cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition: all var(--transition);
+    -webkit-tap-highlight-color: transparent;
   }
-  .modal-close:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
-
-  .modal-tabs {
-    display: flex; gap: 0;
-    padding: 16px 24px 0;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
+  .modal-close:hover {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
   }
-  .modal-tab {
-    padding: 8px 16px; font-size: 13px; font-weight: 500;
-    color: var(--text-secondary); cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    transition: all var(--transition);
-    background: none; border-top: none; border-left: none; border-right: none;
-    font-family: 'DM Sans', sans-serif;
-    display: flex; align-items: center; gap: 7px;
+  .modal-close svg {
+    width: 16px;
+    height: 16px;
   }
-  .modal-tab:hover { color: var(--text-primary); }
-  .modal-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .modal-tab svg { width: 14px; height: 14px; }
-
   .modal-body {
-    flex: 1; overflow-y: auto; padding: 20px 24px 24px;
-    min-height: 0;
+    padding: 24px;
   }
 
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; animation: fadeUp 0.2s ease; }
-
-  /* Schema tuner */
-  .schema-table-select {
-    width: 100%;
-    background: var(--bg-elevated); border: 1px solid var(--border);
-    border-radius: var(--radius-sm); padding: 9px 12px;
-    color: var(--text-primary); font-family: 'DM Mono', monospace;
-    font-size: 13px; outline: none; cursor: pointer;
-    appearance: none; margin-bottom: 16px;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%238B93A7' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 12px center;
-    padding-right: 32px;
+  /* ─────────────────── Settings Page ─────────────────── */
+  .settings-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    margin-bottom: 20px;
   }
-  .schema-table-select:focus { border-color: var(--accent-border); box-shadow: 0 0 0 3px var(--accent-dim); }
-
-  .schema-field { margin-bottom: 14px; }
-  .schema-field-header {
-    display: flex; align-items: center; gap: 8px;
+  .settings-section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+  }
+  .form-group {
+    margin-bottom: 16px;
+  }
+  .form-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
     margin-bottom: 6px;
   }
-  .schema-field-name {
-    font-family: 'DM Mono', monospace; font-size: 12px;
-    color: var(--accent); font-weight: 500;
+  .form-input, .form-select, .form-textarea {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    transition: border-color var(--transition);
   }
-  .schema-field-type {
-    font-size: 10.5px; color: var(--text-dim);
-    background: var(--bg-elevated); border-radius: 4px;
-    padding: 1px 6px;
-  }
-  .schema-field textarea {
-    width: 100%; background: var(--bg-elevated);
-    border: 1px solid var(--border); border-radius: var(--radius-sm);
-    padding: 8px 10px; color: var(--text-secondary);
-    font-family: 'DM Sans', sans-serif; font-size: 13px;
-    outline: none; resize: vertical; min-height: 52px;
-    transition: border-color var(--transition), box-shadow var(--transition);
-    line-height: 1.5;
-  }
-  .schema-field textarea:focus {
+  .form-input:focus, .form-select:focus, .form-textarea:focus {
+    outline: none;
     border-color: var(--accent-border);
-    box-shadow: 0 0 0 3px var(--accent-dim);
-    color: var(--text-primary);
   }
-  .schema-section-label {
-    font-size: 10px; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.7px; color: var(--text-dim);
-    margin-bottom: 10px; padding-bottom: 8px;
-    border-bottom: 1px solid var(--border);
+  .form-textarea {
+    resize: vertical;
+    min-height: 80px;
   }
-  .schema-save-row {
-    display: flex; align-items: center; gap: 10px;
-    margin-top: 20px;
-  }
-  .btn-save {
-    background: var(--accent); border: none;
-    border-radius: var(--radius-sm); padding: 9px 20px;
-    color: white; font-family: 'DM Sans', sans-serif;
-    font-size: 13px; font-weight: 500; cursor: pointer;
+  .btn {
+    padding: 10px 18px;
+    border-radius: var(--radius-sm);
+    border: none;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
     transition: all var(--transition);
-    display: flex; align-items: center; gap: 7px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    -webkit-tap-highlight-color: transparent;
   }
-  .btn-save:hover { background: var(--accent-hover); }
-  .btn-save:disabled { opacity: 0.4; pointer-events: none; }
-  .save-status {
-    font-size: 12.5px; color: var(--success);
-    display: none; align-items: center; gap: 5px;
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
   }
-  .save-status.show { display: flex; animation: fadeUp 0.2s ease; }
-
-  /* Connection manager */
-  .conn-grid {
-    display: grid; grid-template-columns: 1fr 1fr;
-    gap: 10px; margin-bottom: 20px;
+  .btn-primary:hover {
+    background: var(--accent-hover);
   }
-  .conn-cell {
-    background: var(--bg-elevated); border: 1px solid var(--border);
-    border-radius: var(--radius-sm); padding: 12px 14px;
+  .btn-secondary {
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
   }
-  .conn-cell-label {
-    font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px;
-    color: var(--text-dim); margin-bottom: 5px;
-  }
-  .conn-cell-value {
-    font-family: 'DM Mono', monospace; font-size: 13px;
+  .btn-secondary:hover {
+    background: var(--bg-card);
     color: var(--text-primary);
   }
-  .conn-cell-value.ok { color: var(--success); }
-  .conn-switch-btn {
-    background: none; border: 1px solid var(--border);
-    border-radius: var(--radius-sm); padding: 8px 16px;
-    color: var(--text-secondary); font-family: 'DM Sans', sans-serif;
-    font-size: 13px; cursor: pointer; transition: all var(--transition);
-  }
-  .conn-switch-btn:hover { border-color: var(--accent-border); color: var(--accent); }
-  
-  /* Welcome modal — hidden by default, shown on first session load */
-  #welcome-overlay { display: none; }
-  #welcome-overlay.visible { display: flex; }
 
-/* ── Mobile Responsiveness ─────────────────────────────────── */
-@media (max-width: 768px) {
-  :root {
-    --sidebar-w: 0px; 
-    --sidebar-w-collapsed: 0px;
+  /* ═══════════════════════════════════════════════════════════
+     RESPONSIVE BREAKPOINTS
+  ═══════════════════════════════════════════════════════════ */
+
+  /* Tablet (768px and below) */
+  @media (max-width: 768px) {
+    .header {
+      padding: 0 16px;
+    }
+    .header-title {
+      font-size: 14px;
+    }
+    .header-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+    .header-btn span {
+      display: none;
+    }
+    
+    .content {
+      padding: 16px;
+    }
+    
+    .page-home, .page-chat, .page-settings {
+      max-width: 100%;
+    }
+    
+    .history-chips {
+      gap: 6px;
+    }
+    .history-chip {
+      font-size: 12px;
+      padding: 6px 12px;
+    }
+    
+    .input-bar {
+      padding: 12px 14px;
+    }
+    .input-bar textarea {
+      font-size: 14px;
+    }
+    
+    .message {
+      gap: 10px;
+    }
+    .message-avatar {
+      width: 28px;
+      height: 28px;
+    }
+    .message-text {
+      font-size: 13.5px;
+    }
+    
+    .data-table {
+      font-size: 12px;
+    }
+    .data-table th, .data-table td {
+      padding: 6px 10px;
+    }
+    
+    .settings-section {
+      padding: 16px;
+    }
+    .settings-section-title {
+      font-size: 15px;
+    }
+    
+    .modal {
+      max-width: calc(100% - 32px);
+    }
+    .modal-header {
+      padding: 16px 20px;
+    }
+    .modal-title {
+      font-size: 16px;
+    }
+    .modal-body {
+      padding: 20px;
+    }
   }
 
-  .sidebar {
-    position: absolute;
-    left: -280px; /* Hidden off-screen */
-    width: 280px !important;
-    height: 100%;
-    z-index: 1000;
-    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    background: var(--bg-surface);
-    box-shadow: 20px 0 50px rgba(0,0,0,0.5);
+  /* Mobile (640px and below) */
+  @media (max-width: 640px) {
+    body {
+      font-size: 13px;
+    }
+
+    /* Show mobile menu button */
+    .mobile-menu-btn {
+      display: flex;
+    }
+
+    /* Hide sidebar by default, show as overlay when active */
+    .sidebar {
+      position: fixed;
+      left: 0;
+      top: 0;
+      transform: translateX(-100%);
+      box-shadow: 4px 0 24px rgba(0, 0, 0, 0.3);
+    }
+    .sidebar.mobile-open {
+      transform: translateX(0);
+    }
+    .sidebar.collapsed {
+      transform: translateX(-100%);
+    }
+    .sidebar.collapsed.mobile-open {
+      transform: translateX(0);
+      width: var(--sidebar-w);
+      min-width: var(--sidebar-w);
+    }
+
+    /* Show mobile overlay when sidebar is open */
+    .mobile-overlay.active {
+      display: block;
+    }
+
+    /* Main content takes full width */
+    .main {
+      width: 100%;
+    }
+
+    .header {
+      padding: 0 12px 0 56px;
+      height: 48px;
+    }
+    .header-title {
+      font-size: 13px;
+    }
+    .header-actions {
+      gap: 6px;
+    }
+    .header-btn {
+      padding: 5px 10px;
+      font-size: 11px;
+    }
+    .header-btn svg {
+      width: 12px;
+      height: 12px;
+    }
+    
+    .content {
+      padding: 12px;
+    }
+    
+    .history-header {
+      font-size: 10px;
+    }
+    .history-chips {
+      gap: 6px;
+      margin-bottom: 20px;
+    }
+    .history-chip {
+      font-size: 11.5px;
+      padding: 6px 10px;
+    }
+    
+    .input-bar {
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+    .input-bar textarea {
+      font-size: 13.5px;
+    }
+    .send-btn {
+      width: 30px;
+      height: 30px;
+    }
+    .send-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+    
+    .chat-container {
+      gap: 16px;
+    }
+    .message {
+      gap: 8px;
+    }
+    .message-avatar {
+      width: 26px;
+      height: 26px;
+    }
+    .message-avatar svg {
+      width: 14px;
+      height: 14px;
+    }
+    .message-text {
+      font-size: 13px;
+    }
+    .message-sql {
+      padding: 10px;
+      font-size: 11.5px;
+    }
+    
+    .data-table-header {
+      padding: 8px 12px;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .data-table-title {
+      font-size: 11px;
+    }
+    .data-table-actions {
+      width: 100%;
+    }
+    .table-action-btn {
+      flex: 1;
+      justify-content: center;
+      padding: 6px 8px;
+      font-size: 10.5px;
+    }
+    .data-table {
+      font-size: 11.5px;
+    }
+    .data-table th, .data-table td {
+      padding: 6px 8px;
+    }
+    .data-table-scroll {
+      max-height: 300px;
+    }
+    
+    .settings-section {
+      padding: 14px;
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+    }
+    .settings-section-title {
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+    .form-group {
+      margin-bottom: 14px;
+    }
+    .form-label {
+      font-size: 11px;
+    }
+    .form-input, .form-select, .form-textarea {
+      padding: 9px 11px;
+      font-size: 13.5px;
+    }
+    .btn {
+      padding: 9px 16px;
+      font-size: 13px;
+    }
+    
+    .modal {
+      max-width: calc(100% - 24px);
+      border-radius: var(--radius-lg);
+    }
+    .modal-header {
+      padding: 14px 16px;
+    }
+    .modal-title {
+      font-size: 15px;
+    }
+    .modal-close {
+      width: 26px;
+      height: 26px;
+    }
+    .modal-body {
+      padding: 16px;
+    }
   }
 
-  /* When active on mobile */
-  .sidebar.mobile-open {
-    left: 0;
+  /* Extra small mobile (400px and below) */
+  @media (max-width: 400px) {
+    .header {
+      padding: 0 10px 0 52px;
+    }
+    .content {
+      padding: 10px;
+    }
+    .input-bar {
+      padding: 9px 11px;
+    }
+    .data-table th, .data-table td {
+      padding: 5px 7px;
+      font-size: 11px;
+    }
+    .settings-section {
+      padding: 12px;
+    }
   }
 
-  /* Overlay to dim the background when menu is open */
-  .mobile-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.6);
-    z-index: 999;
-    backdrop-filter: blur(2px);
-  }
-  .mobile-overlay.active { display: block; }
-
-  .header { padding: 0 12px; gap: 8px; }
-  .header-wordmark { display: none; } /* Hide logo text to save space */
-  
-  .chat-inner, .input-inner {
-    max-width: 100%;
-    padding: 0 12px;
+  /* Landscape mobile adjustments */
+  @media (max-height: 500px) and (orientation: landscape) {
+    .header {
+      height: 44px;
+    }
+    .content {
+      padding: 12px;
+    }
+    .input-bar {
+      margin-bottom: 10px;
+    }
+    .data-table-scroll {
+      max-height: 200px;
+    }
   }
 
-  .msg-text.user { max-width: 90%; }
-  
-  /* Show a menu button on mobile only */
-  .mobile-menu-btn {
-    display: flex !important;
+  /* Touch device optimization */
+  @media (hover: none) and (pointer: coarse) {
+    .nav-item {
+      padding: 10px 8px;
+    }
+    .header-btn, .table-action-btn, .btn {
+      min-height: 36px;
+    }
+    .send-btn {
+      min-width: 36px;
+      min-height: 36px;
+    }
   }
-}
 
-/* Helper for the menu button */
-.mobile-menu-btn {
-  display: none;
-  width: 36px;
-  height: 36px;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  cursor: pointer;
-}
-</style>
+  </style>
 </head>
 <body>
 
-<!-- ═══════════════════════ SIDEBAR ═══════════════════════════ -->
-<nav class="sidebar" id="sidebar">
+<!-- Mobile overlay -->
+<div class="mobile-overlay" id="mobileOverlay"></div>
 
+<!-- Mobile menu button -->
+<button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle menu">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <path d="M3 12h18M3 6h18M3 18h18"/>
+  </svg>
+</button>
+
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
   <div class="sidebar-header">
-    <div class="logo-mark" style="cursor:pointer;background:none;box-shadow:none;flex-shrink:0;" onclick="toggleSidebar()" title="Collapse sidebar">
-      <svg width="22" height="22" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="lg-sb" x1="8" y1="6" x2="32" y2="34" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="#A5B4FC"/>
-            <stop offset="100%" stop-color="#4F46E5"/>
-          </linearGradient>
-        </defs>
-        <circle cx="20" cy="20" r="17" stroke="url(#lg-sb)" stroke-width="2.2" fill="none"/>
-        <path d="M20 3 C11 7 7.5 13 7.5 20 C7.5 27 11 33 20 37" stroke="url(#lg-sb)" stroke-width="2" fill="none" stroke-linecap="round"/>
-        <path d="M20 3 C23 7 24.5 13 24.5 20 C24.5 27 23 33 20 37" stroke="url(#lg-sb)" stroke-width="2" fill="none" stroke-linecap="round"/>
-        <path d="M4.5 13 C10 10.5 15 9.5 20 9.5 C25 9.5 30 10.5 35.5 13" stroke="url(#lg-sb)" stroke-width="2" fill="none" stroke-linecap="round"/>
-        <path d="M4.5 27 C10 29.5 15 30.5 20 30.5 C25 30.5 30 29.5 35.5 27" stroke="url(#lg-sb)" stroke-width="2" fill="none" stroke-linecap="round"/>
-        <path d="M9 28 C13 23 17 17 24 11" stroke="url(#lg-sb)" stroke-width="1.6" fill="none" stroke-linecap="round" opacity="0.75"/>
-        <circle cx="14.5" cy="12.5" r="3" fill="#C7D2FE"/>
-        <circle cx="11"   cy="20"   r="3" fill="#818CF8"/>
-        <circle cx="26"   cy="28.5" r="3" fill="#A5B4FC"/>
+    <div class="logo-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
       </svg>
     </div>
-    <button class="sidebar-toggle" onclick="toggleSidebar()" title="Collapse sidebar">
-      <svg viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span class="logo-text">Dataloom</span>
+    <button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M15 18l-6-6 6-6"/>
+      </svg>
     </button>
   </div>
 
-  <!-- New chat -->
-  <div class="sidebar-section">
-    <button class="nav-item" onclick="newChat()" data-tip="New chat">
-      <svg viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-      <span class="nav-label">New Chat</span>
-    </button>
-  </div>
-
-  <!-- Active DB -->
-  <div style="padding: 8px 8px 0;">
-    <div class="db-switcher" id="db-switcher">
-      <div class="db-switcher-header" onclick="toggleDbList()">
-        <div class="db-dot"></div>
-        <span class="db-name-text" id="sidebar-db-name">—</span>
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="flex-shrink:0;color:var(--text-dim)">
-          <path d="M3 5l3 3 3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+  <div class="sidebar-content">
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Navigation</div>
+      <button class="nav-item active" data-tip="Home" onclick="showPage('home')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
         </svg>
-      </div>
-      <div class="db-switcher-list" id="db-list">
-        <!-- Filled by JS -->
-      </div>
+        <span class="nav-label">Home</span>
+      </button>
+      <button class="nav-item" data-tip="History" onclick="showPage('history')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+        </svg>
+        <span class="nav-label">History</span>
+      </button>
+      <button class="nav-item" data-tip="Schema" onclick="showPage('schema')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        <span class="nav-label">Schema</span>
+      </button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Settings</div>
+      <button class="nav-item" data-tip="Database" onclick="showPage('database')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+          <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+        </svg>
+        <span class="nav-label">Database</span>
+      </button>
+      <button class="nav-item" data-tip="Settings" onclick="showPage('settings')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
+        </svg>
+        <span class="nav-label">Settings</span>
+      </button>
     </div>
   </div>
 
-  <!-- History -->
-  <div class="sidebar-section" style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;">
-    <div class="sidebar-section-label">History</div>
-    <button class="history-clear-btn" onclick="clearHistory()" title="Clear history">
-      <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 3h8M5 3V2h2v1M4 3l.5 7M8 3l-.5 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-      Clear
-    </button>
-  </div>
-  <div class="history-panel" id="history-panel">
-    <!-- Filled by JS -->
-  </div>
-
-  <!-- Bottom: settings + theme -->
-  <div class="sidebar-bottom">
-
-    <button class="nav-item" onclick="openSettings()" data-tip="Settings" style="margin-top:2px;">
-      <svg viewBox="0 0 16 16" fill="none">
-        <path d="M8 10a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" stroke-width="1.3"/>
-        <path d="M13.3 8c0-.23-.02-.46-.05-.68l1.47-1.14-1.4-2.42-1.77.71A5 5 0 009.7 3.7L9.4 2H6.6l-.3 1.7a5 5 0 00-1.85.77l-1.77-.71-1.4 2.42 1.47 1.14A5 5 0 002.7 8c0 .23.02.46.05.68L1.28 9.82l1.4 2.42 1.77-.71c.56.31 1.18.54 1.85.77l.3 1.7h2.8l.3-1.7a5 5 0 001.85-.77l1.77.71 1.4-2.42-1.47-1.14c.03-.22.05-.45.05-.68z" stroke="currentColor" stroke-width="1.3"/>
+  <div class="sidebar-footer">
+    <button class="nav-item" data-tip="Help" onclick="alert('Help & Documentation')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+        <circle cx="12" cy="17" r="0.5" fill="currentColor"/>
       </svg>
-      <span class="nav-label">Settings</span>
-    </button>
-
-    <button class="nav-item" onclick="toggleTheme()" data-tip="Toggle theme" style="margin-top:2px;">
-      <svg id="theme-icon" viewBox="0 0 16 16" fill="none">
-        <circle cx="8" cy="8" r="3.5" stroke="currentColor" stroke-width="1.3"/>
-        <path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-      </svg>
-      <span class="nav-label" id="theme-label">Light Mode</span>
+      <span class="nav-label">Help</span>
     </button>
   </div>
+</div>
 
-</nav>
-
-<!-- ═══════════════════════ MAIN ═══════════════════════════════ -->
+<!-- Main content -->
 <div class="main">
-
-  <!-- Header -->
-  <header class="header">
-
-    <!-- Wordmark: logo SVG + brand name — acts as Home button -->
-    <div class="header-wordmark" onclick="goHome()" style="cursor:pointer;" title="Home">
-      <div class="header-logo-svg">
-        <svg width="36" height="36" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="hdr-lg" x1="8" y1="6" x2="32" y2="34" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#A5B4FC"/>
-              <stop offset="100%" stop-color="#4F46E5"/>
-            </linearGradient>
-            <filter id="hdr-glow">
-              <feGaussianBlur stdDeviation="1" result="b"/>
-              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-            </filter>
-          </defs>
-          <!-- Outer circle -->
-          <circle cx="20" cy="20" r="17" stroke="url(#hdr-lg)" stroke-width="1.7" fill="none"/>
-          <!-- Longitude: left arc -->
-          <path d="M20 3 C11 7 7.5 13 7.5 20 C7.5 27 11 33 20 37" stroke="url(#hdr-lg)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-          <!-- Longitude: center-right arc -->
-          <path d="M20 3 C23 7 24.5 13 24.5 20 C24.5 27 23 33 20 37" stroke="url(#hdr-lg)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-          <!-- Longitude: far right arc (faint) -->
-          <path d="M20 3 C29 7 32.5 13 32.5 20 C32.5 27 29 33 20 37" stroke="url(#hdr-lg)" stroke-width="1.3" fill="none" stroke-linecap="round" opacity="0.5"/>
-          <!-- Latitude: top arc -->
-          <path d="M4.5 13 C10 10.5 15 9.5 20 9.5 C25 9.5 30 10.5 35.5 13" stroke="url(#hdr-lg)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-          <!-- Latitude: mid arc (faint) -->
-          <path d="M3 20 C8 19 14 18.5 20 18.5 C26 18.5 32 19 37 20" stroke="url(#hdr-lg)" stroke-width="1.1" fill="none" stroke-linecap="round" opacity="0.35"/>
-          <!-- Latitude: bottom arc -->
-          <path d="M4.5 27 C10 29.5 15 30.5 20 30.5 C25 30.5 30 29.5 35.5 27" stroke="url(#hdr-lg)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-          <!-- Diagonal cross — distinctive feature -->
-          <path d="M9 28 C13 23 17 17 24 11" stroke="url(#hdr-lg)" stroke-width="1.3" fill="none" stroke-linecap="round" opacity="0.8"/>
-          <!-- Node dots at intersections -->
-          <circle cx="14.5" cy="12.5" r="2"   fill="#C7D2FE" filter="url(#hdr-glow)"/>
-          <circle cx="23"   cy="10.5" r="1.7" fill="#A5B4FC" filter="url(#hdr-glow)"/>
-          <circle cx="11"   cy="20"   r="2"   fill="#818CF8" filter="url(#hdr-glow)"/>
-          <circle cx="22.5" cy="19"   r="1.8" fill="#C7D2FE" filter="url(#hdr-glow)"/>
-          <circle cx="9.5"  cy="27.5" r="1.8" fill="#818CF8" filter="url(#hdr-glow)"/>
-          <circle cx="26"   cy="28.5" r="2"   fill="#A5B4FC" filter="url(#hdr-glow)"/>
-          <circle cx="19.5" cy="30.5" r="1.5" fill="#818CF8" filter="url(#hdr-glow)"/>
+  <div class="header">
+    <div class="header-title" id="pageTitle">Home</div>
+    <div class="header-actions">
+      <button class="header-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <path d="M17 8l-5-5-5 5"/>
+          <path d="M12 3v12"/>
         </svg>
+        <span>Export</span>
+      </button>
+      <button class="header-btn primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14m-7-7h14"/>
+        </svg>
+        <span>New Query</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="content" id="mainContent">
+    <!-- Content will be dynamically loaded here -->
+    <div class="page-home">
+      <div class="history-header">Recent Queries</div>
+      <div class="history-chips">
+        <div class="history-chip">Show total sales by category</div>
+        <div class="history-chip">List top 10 customers by revenue</div>
+        <div class="history-chip">Average order value by month</div>
+        <div class="history-chip">Products with low inventory</div>
       </div>
-      <span class="header-brand-name">Dataloom</span>
-    </div>
 
-    <!-- DB badge -->
-    <div class="header-db-badge" id="header-db-badge" onclick="toggleDbList()">
-      <div class="db-dot" style="width:6px;height:6px;"></div>
-      <span id="header-db-name">—</span>
-    </div>
-
-    <div class="header-spacer"></div>
-
-    <!-- Model selector -->
-    <div class="model-selector" id="model-selector" onclick="toggleModelDropdown()">
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="color:var(--text-dim);flex-shrink:0">
-        <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/>
-        <path d="M8 5v3l2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-      </svg>
-      <span class="model-pill" id="model-pill">—</span>
-      <svg class="model-caret" width="11" height="11" viewBox="0 0 11 11" fill="none">
-        <path d="M2 4l3.5 3.5L9 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-      </svg>
-      <div class="model-dropdown" id="model-dropdown">
-        <div class="model-dropdown-header">Model</div>
-      </div>
-    </div>
-
-    <button class="header-btn" onclick="clearChat()" title="Clear conversation" style="margin-left:8px;">
-      <svg viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
-  </header>
-
-  <!-- Chat -->
-  <div class="chat-area" id="chat-area">
-    <div class="chat-inner" id="chat-inner">
-      <div class="empty-state" id="empty-state">
-        <div class="empty-icon">
-          <svg width="72" height="72" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;filter:drop-shadow(0 0 16px rgba(79,70,229,0.55))">
-            <defs>
-              <linearGradient id="lg-es0" x1="8" y1="6" x2="32" y2="34" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stop-color="#A5B4FC"/>
-                <stop offset="100%" stop-color="#4F46E5"/>
-              </linearGradient>
-              <filter id="gw-es0">
-                <feGaussianBlur stdDeviation="1" result="b"/>
-                <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-              </filter>
-            </defs>
-            <circle cx="20" cy="20" r="17" stroke="url(#lg-es0)" stroke-width="1.7" fill="none"/>
-            <path d="M20 3 C11 7 7.5 13 7.5 20 C7.5 27 11 33 20 37" stroke="url(#lg-es0)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-            <path d="M20 3 C23 7 24.5 13 24.5 20 C24.5 27 23 33 20 37" stroke="url(#lg-es0)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-            <path d="M20 3 C29 7 32.5 13 32.5 20 C32.5 27 29 33 20 37" stroke="url(#lg-es0)" stroke-width="1.3" fill="none" stroke-linecap="round" opacity="0.5"/>
-            <path d="M4.5 13 C10 10.5 15 9.5 20 9.5 C25 9.5 30 10.5 35.5 13" stroke="url(#lg-es0)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-            <path d="M3 20 C8 19 14 18.5 20 18.5 C26 18.5 32 19 37 20" stroke="url(#lg-es0)" stroke-width="1.1" fill="none" stroke-linecap="round" opacity="0.35"/>
-            <path d="M4.5 27 C10 29.5 15 30.5 20 30.5 C25 30.5 30 29.5 35.5 27" stroke="url(#lg-es0)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-            <path d="M9 28 C13 23 17 17 24 11" stroke="url(#lg-es0)" stroke-width="1.3" fill="none" stroke-linecap="round" opacity="0.8"/>
-            <circle cx="14.5" cy="12.5" r="2"   fill="#C7D2FE" filter="url(#gw-es0)"/>
-            <circle cx="23"   cy="10.5" r="1.7" fill="#A5B4FC" filter="url(#gw-es0)"/>
-            <circle cx="11"   cy="20"   r="2"   fill="#818CF8" filter="url(#gw-es0)"/>
-            <circle cx="22.5" cy="19"   r="1.8" fill="#C7D2FE" filter="url(#gw-es0)"/>
-            <circle cx="9.5"  cy="27.5" r="1.8" fill="#818CF8" filter="url(#gw-es0)"/>
-            <circle cx="26"   cy="28.5" r="2"   fill="#A5B4FC" filter="url(#gw-es0)"/>
-            <circle cx="19.5" cy="30.5" r="1.5" fill="#818CF8" filter="url(#gw-es0)"/>
+      <div class="input-bar">
+        <textarea placeholder="Ask anything about your data..." rows="1"></textarea>
+        <button class="send-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 2L11 13"/>
+            <path d="M22 2l-7 20-4-9-9-4 20-7z"/>
           </svg>
-        </div>
-        <div class="empty-title" id="empty-title">Ask your database anything</div>
-        <div class="empty-sub" id="empty-sub">Type a question in plain English and get instant SQL results.</div>
-        <div class="empty-chips" id="empty-chips">
-          <!-- Filled dynamically -->
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Input -->
-  <div class="input-wrap">
-    <div class="input-inner">
-      <textarea id="question-input" placeholder="Ask anything about your data…" rows="1"></textarea>
-      <button class="send-btn" id="send-btn" onclick="sendQuestion()">
-        <svg viewBox="0 0 16 16" fill="none"><path d="M2 14L14 8 2 2v5l8 1-8 1v5z" fill="currentColor"/></svg>
-      </button>
-    </div>
-    <div class="input-hint">Enter to send · Shift+Enter for new line</div>
-  </div>
-
-</div><!-- /main -->
-
-<!-- ═══════════════════════ SETTINGS MODAL ══════════════════════ -->
-<div class="modal-overlay" id="settings-overlay" onclick="closeSettingsOnBackdrop(event)">
-  <div class="modal">
-    <div class="modal-header">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <svg width="22" height="22" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="lg-mod" x1="8" y1="6" x2="32" y2="34" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#A5B4FC"/>
-              <stop offset="100%" stop-color="#4F46E5"/>
-            </linearGradient>
-          </defs>
-          <circle cx="20" cy="20" r="17" stroke="url(#lg-mod)" stroke-width="2.2" fill="none"/>
-          <path d="M20 3 C11 7 7.5 13 7.5 20 C7.5 27 11 33 20 37" stroke="url(#lg-mod)" stroke-width="2" fill="none" stroke-linecap="round"/>
-          <path d="M20 3 C23 7 24.5 13 24.5 20 C24.5 27 23 33 20 37" stroke="url(#lg-mod)" stroke-width="2" fill="none" stroke-linecap="round"/>
-          <path d="M4.5 13 C10 10.5 15 9.5 20 9.5 C25 9.5 30 10.5 35.5 13" stroke="url(#lg-mod)" stroke-width="2" fill="none" stroke-linecap="round"/>
-          <path d="M4.5 27 C10 29.5 15 30.5 20 30.5 C25 30.5 30 29.5 35.5 27" stroke="url(#lg-mod)" stroke-width="2" fill="none" stroke-linecap="round"/>
-          <path d="M9 28 C13 23 17 17 24 11" stroke="url(#lg-mod)" stroke-width="1.6" fill="none" stroke-linecap="round" opacity="0.75"/>
-          <circle cx="14.5" cy="12.5" r="3" fill="#C7D2FE"/>
-          <circle cx="11"   cy="20"   r="3" fill="#818CF8"/>
-          <circle cx="26"   cy="28.5" r="3" fill="#A5B4FC"/>
-        </svg>
-        <span class="modal-title">Settings</span>
-      </div>
-      <button class="modal-close" onclick="closeSettings()">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-
-    <div class="modal-tabs">
-      <button class="modal-tab active" id="tab-schema" onclick="switchTab('schema')">
-        <svg viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-        Schema Tuner
-      </button>
-      <button class="modal-tab" id="tab-connection" onclick="switchTab('connection')">
-        <svg viewBox="0 0 16 16" fill="none"><path d="M3 8a5 5 0 0110 0M8 3v2M8 11v2M3.93 5.93l1.41 1.41M10.66 10.66l1.41 1.41" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-        Connection
-      </button>
-    </div>
-
-    <div class="modal-body">
-
-      <!-- ── Schema Tuner ── -->
-      <div class="tab-panel active" id="panel-schema">
-        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.6;">
-          Add business meaning to tables and columns. The LLM reads these descriptions before every query — better descriptions mean more accurate SQL.
-        </p>
-        <select class="schema-table-select" id="schema-table-select" onchange="loadTableFields()">
-          <option value="">— Select a table —</option>
-        </select>
-
-        <div id="schema-fields-container">
-          <div style="color:var(--text-dim);font-size:13px;text-align:center;padding:24px 0;">
-            Select a table to edit its descriptions.
-          </div>
-        </div>
-
-        <div class="schema-save-row" id="schema-save-row" style="display:none;">
-          <button class="btn-save" id="schema-save-btn" onclick="saveDescriptions()">
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 7l3.5 3.5L11 3" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Save & Apply
-          </button>
-          <div class="save-status" id="save-status">
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 7l3.5 3.5L11 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Saved — schema reloaded
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Connection Manager ── -->
-      <div class="tab-panel" id="panel-connection">
-        <div class="conn-grid" id="conn-grid">
-          <!-- Filled by JS -->
-        </div>
-        <button class="conn-switch-btn" onclick="closeSettings(); window.location='/setup';">
-          Switch Database / Add New
         </button>
       </div>
 
+      <div class="chat-container">
+        <!-- Example message -->
+        <div class="message">
+          <div class="message-avatar user">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </div>
+          <div class="message-content">
+            <div class="message-text">Show me the top 5 products by sales</div>
+          </div>
+        </div>
+
+        <div class="message">
+          <div class="message-avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
+          </div>
+          <div class="message-content">
+            <div class="message-text">Here are the top 5 products by sales:</div>
+            <div class="data-table-container">
+              <div class="data-table-header">
+                <div class="data-table-title">5 rows returned</div>
+                <div class="data-table-actions">
+                  <button class="table-action-btn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    </svg>
+                    CSV
+                  </button>
+                  <button class="table-action-btn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <path d="M14 2v6h6"/>
+                    </svg>
+                    Excel
+                  </button>
+                </div>
+              </div>
+              <div class="data-table-scroll">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th>Category</th>
+                      <th>Sales</th>
+                      <th>Revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Premium Widget Pro</td>
+                      <td>Electronics</td>
+                      <td>1,247</td>
+                      <td>$124,700</td>
+                    </tr>
+                    <tr>
+                      <td>Smart Home Hub</td>
+                      <td>Electronics</td>
+                      <td>986</td>
+                      <td>$98,600</td>
+                    </tr>
+                    <tr>
+                      <td>Ergonomic Office Chair</td>
+                      <td>Furniture</td>
+                      <td>847</td>
+                      <td>$84,700</td>
+                    </tr>
+                    <tr>
+                      <td>Wireless Earbuds X</td>
+                      <td>Electronics</td>
+                      <td>723</td>
+                      <td>$72,300</td>
+                    </tr>
+                    <tr>
+                      <td>Fitness Tracker Band</td>
+                      <td>Wearables</td>
+                      <td>654</td>
+                      <td>$65,400</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
-<script>
-// ═══════════════════════════════════════════════════════════════
-// STATE
-// ═══════════════════════════════════════════════════════════════
-const S = {
-  sidebarCollapsed: false,
-  modelDropdownOpen: false,
-  dbListOpen: false,
-  thinking: false,
-  currentModel: '',
-  activeDb: '',
-  displayDb: '',
-  messages: [],         // { role, content, type, sql, records, headers, total }
-  PAGE_SIZE: 20,
-};
-
-// ═══════════════════════════════════════════════════════════════
-// INIT
-// ═══════════════════════════════════════════════════════════════
-async function init() {
-  await loadStatus();
-  await loadModels();
-  await loadHistory();
-  setupInput();
-}
-
-async function loadStatus() {
-  try {
-    const d = await api('/api/status');
-    S.activeDb  = d.db_name || '';
-    S.displayDb = d.display_name || d.db_name || '';
-    document.getElementById('sidebar-db-name').textContent = S.displayDb;
-    document.getElementById('header-db-name').textContent  = S.displayDb;
-    if (d.databases && d.databases.length > 0) renderDbList(d.databases, d.db_name);
-    // Welcome title
-    if (S.displayDb) {
-      document.getElementById('empty-title').textContent = `Connected to ${S.displayDb}`;
-      document.getElementById('empty-sub').textContent = 'Ask a question in plain English to query your database.';
-    }
-  } catch(e) { console.error('status', e); }
-}
-
-async function loadModels() {
-  try {
-    const d = await api('/api/models');
-    S.currentModel = d.current || '';
-    document.getElementById('model-pill').textContent = normalizeModelName(S.currentModel);
-    renderModelDropdown(d.models || [], d.current);
-  } catch(e) {}
-}
-
-async function loadHistory() {
-  try {
-    const d = await api('/api/history');
-    renderHistory(d);
-    renderChips(d);
-  } catch(e) {}
-}
-
-// ═══════════════════════════════════════════════════════════════
-// SIDEBAR
-// ═══════════════════════════════════════════════════════════════
-function toggleSidebar() {
-  S.sidebarCollapsed = !S.sidebarCollapsed;
-  const sb = document.getElementById('sidebar');
-  sb.classList.toggle('collapsed', S.sidebarCollapsed);
-  // Flip arrow
-  const icon = sb.querySelector('.sidebar-toggle svg path');
-  if (icon) icon.setAttribute('d', S.sidebarCollapsed ? 'M6 3l5 5-5 5' : 'M10 3L5 8l5 5');
-}
-
-function toggleDbList() {
-  S.dbListOpen = !S.dbListOpen;
-  document.getElementById('db-list').classList.toggle('open', S.dbListOpen);
-}
-
-function renderDbList(databases, activeDb) {
-  const el = document.getElementById('db-list');
-  el.innerHTML = databases.map(name => `
-    <div class="db-list-item ${name === activeDb ? 'active' : ''}" onclick="switchDb('${name}')">
-      <div class="db-dot" style="width:6px;height:6px;${name===activeDb?'':'background:var(--text-dim);box-shadow:none;'}"></div>
-      ${cleanName(name)}
-    </div>
-  `).join('') + `
-    <div class="db-list-add" onclick="window.location='/setup'">
-      <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M5.5 1v9M1 5.5h9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-      Add database
-    </div>`;
-}
-
-async function switchDb(name) {
-  if (name === S.activeDb) { S.dbListOpen=false; document.getElementById('db-list').classList.remove('open'); return; }
-  try {
-    const d = await api('/api/databases/switch', 'POST', { db_name: name });
-    S.activeDb  = d.db_name;
-    S.displayDb = d.display_name;
-    document.getElementById('sidebar-db-name').textContent = S.displayDb;
-    document.getElementById('header-db-name').textContent  = S.displayDb;
-    document.getElementById('empty-title').textContent = `Connected to ${S.displayDb}`;
-    // Clear chat, load new history
-    clearChatDisplay();
-    await loadHistory();
-    const statusD = await api('/api/status');
-    renderDbList(statusD.databases || [], name);
-    S.dbListOpen = false;
-    document.getElementById('db-list').classList.remove('open');
-  } catch(e) { alert('Failed to switch database: ' + e.message); }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// HISTORY
-// ═══════════════════════════════════════════════════════════════
-function renderHistory(items) {
-  const el = document.getElementById('history-panel');
-  if (!items || items.length === 0) {
-    el.innerHTML = `<div class="history-empty">No history yet.</div>`;
-    return;
-  }
-  el.innerHTML = items.slice(0,30).map(h => `
-    <div class="history-item" onclick="sendHistoryItem('${esc(h.question)}')">
-      <svg viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1"/><path d="M6 4v2l1.5 1.5" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
-      ${esc(truncate(h.question, 32))}
-    </div>`).join('');
-}
-
-// Starter questions guaranteed to work on the Olist demo database
-const STARTER_QUESTIONS = [
-  'Total revenue by state',
-  'Top 10 product categories by revenue',
-  'Orders placed per month',
-  'Average order value',
-  'Total freight cost by state',
-  'Revenue in 2017',
-  'Top 10 cities by number of orders',
-  'Average delivery time in days',
-  'Which product categories have the most orders',
-  'Monthly revenue trend',
-];
-
-function renderChips(history) {
-  const el = document.getElementById('empty-chips');
-  if (!history || history.length === 0) {
-    // Show starter questions when no history exists
-    el.innerHTML = STARTER_QUESTIONS.slice(0, 6).map(q =>
-      `<div class="chip" onclick="sendDirect('${esc(q)}')">${q}</div>`
-    ).join('');
-    return;
-  }
-  // Show recent history chips + one starter as fallback
-  el.innerHTML = history.slice(0, 5).map(h =>
-    `<div class="chip" onclick="sendDirect('${esc(h.question)}')">${esc(truncate(h.question, 38))}</div>`
-  ).join('');
-}
-
-function sendHistoryItem(q) {
-  document.getElementById('question-input').value = q;
-  sendQuestion();
-}
-
-async function clearHistory() {
-  if (!confirm('Clear all query history for this database?')) return;
-  try {
-    await api('/api/history/clear', 'POST');
-    // Wipe sidebar + chips
-    document.getElementById('history-panel').innerHTML =
-      '<div class="history-empty">No history yet.</div>';
-    renderChips([]);
-  } catch(e) { console.error('Clear history failed:', e); }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// MODEL SELECTOR
-// ═══════════════════════════════════════════════════════════════
-
-/**
- * Normalize Ollama model names for display.
- * "mistral:latest"           → "Mistral"
- * "llama3.1:8b-instruct-q4" → "Llama 3.1"
- * "phi3:3.8b"                → "Phi 3"
- * "gemma2:27b"               → "Gemma 2"
- * "deepseek-coder:6.7b"      → "Deepseek Coder"
- */
-function normalizeModelName(raw) {
-  if (!raw) return '—';
-  // Strip everything after the first colon (tags, versions, quantizations)
-  let name = raw.split(':')[0];
-  // Replace hyphens/underscores with spaces
-  name = name.replace(/[-_]/g, ' ');
-  // Insert space before digits that follow letters (llama3 → llama 3)
-  name = name.replace(/([a-zA-Z])(\d)/g, '$1 $2');
-  // Capitalize each word
-  name = name.replace(/\b\w/g, c => c.toUpperCase());
-  return name.trim();
-}
-
-function renderModelDropdown(models, current) {
-  const el = document.getElementById('model-dropdown');
-  const header = '<div class="model-dropdown-header">Model</div>';
-  if (!models.length) {
-    el.innerHTML = header + '<div style="padding:8px 10px;font-size:12.5px;color:var(--text-dim)">No models found</div>';
-    return;
-  }
-  el.innerHTML = header + models.map(m => `
-    <div class="model-option ${m===current?'current':''}" onclick="selectModel(event,'${esc(m)}')">
-      <span>${normalizeModelName(m)}</span>
-      <svg class="model-option-check" viewBox="0 0 13 13" fill="none">
-        <path d="M2 7l3.5 3.5L11 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    </div>`).join('');
-}
-
-function toggleModelDropdown(e) {
-  S.modelDropdownOpen = !S.modelDropdownOpen;
-  const sel = document.getElementById('model-selector');
-  const dd  = document.getElementById('model-dropdown');
-  sel.classList.toggle('open', S.modelDropdownOpen);
-  dd.classList.toggle('open', S.modelDropdownOpen);
-}
-
-async function selectModel(e, name) {
-  e.stopPropagation();
-  try {
-    await api('/api/model', 'POST', { model: name });
-    S.currentModel = name;
-    document.getElementById('model-pill').textContent = normalizeModelName(name);
-    await loadModels();
-  } catch(e) {}
-  S.modelDropdownOpen = false;
-  document.getElementById('model-selector').classList.remove('open');
-  document.getElementById('model-dropdown').classList.remove('open');
-}
-
-// ═══════════════════════════════════════════════════════════════
-// THEME
-// ═══════════════════════════════════════════════════════════════
-// Light mode support (minimal — primarily dark)
-let isLight = false;
-function toggleTheme() {
-  isLight = !isLight;
-  document.documentElement.style.setProperty('--bg-base',     isLight ? '#F5F6FA' : '#080B12');
-  document.documentElement.style.setProperty('--bg-surface',  isLight ? '#FFFFFF' : '#0D1018');
-  document.documentElement.style.setProperty('--bg-elevated', isLight ? '#ECEEF5' : '#131720');
-  document.documentElement.style.setProperty('--bg-card',     isLight ? '#FFFFFF' : '#111520');
-  document.documentElement.style.setProperty('--bg-input',    isLight ? '#F0F1F8' : '#0F1219');
-  document.documentElement.style.setProperty('--text-primary',   isLight ? '#111827' : '#EFF1F7');
-  document.documentElement.style.setProperty('--text-secondary', isLight ? '#4B5563' : '#7C859A');
-  document.documentElement.style.setProperty('--text-dim',       isLight ? '#9CA3AF' : '#394057');
-  document.documentElement.style.setProperty('--border',     isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.055)');
-  document.documentElement.style.setProperty('--border-md',  isLight ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.09)');
-  document.getElementById('theme-label').textContent = isLight ? 'Dark Mode' : 'Light Mode';
-}
-
-// ═══════════════════════════════════════════════════════════════
-// SEND QUESTION
-// ═══════════════════════════════════════════════════════════════
-function setupInput() {
-  const inp = document.getElementById('question-input');
-  inp.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuestion(); }
-  });
-  inp.addEventListener('input', () => {
-    inp.style.height = 'auto';
-    inp.style.height = Math.min(inp.scrollHeight, 180) + 'px';
-  });
-}
-
-function sendDirect(q) {
-  document.getElementById('question-input').value = q;
-  sendQuestion();
-}
-
-async function sendQuestion() {
-  if (S.thinking) return;
-  const inp      = document.getElementById('question-input');
-  const question = inp.value.trim();
-  if (!question) return;
-
-  inp.value = '';
-  inp.style.height = 'auto';
-  hideEmpty();
-
-  // User bubble
-  appendUserMsg(question);
-
-  // Thinking
-  const thinkId = appendThinking();
-  S.thinking = true;
-  document.getElementById('send-btn').disabled = true;
-
-  try {
-    const d = await api('/api/query', 'POST', { question });
-    removeThinking(thinkId);
-
-    if (d.clarification) {
-      appendClarification(d.clarification);
-    } else if (!d.success) {
-      appendError(d.error || 'Something went wrong. Try rephrasing.');
-    } else {
-      appendAiResponse(d);
-    }
-
-    // Refresh history
-    await loadHistory();
-
-  } catch(e) {
-    removeThinking(thinkId);
-    appendError('Network error. Is the server running?');
-  } finally {
-    S.thinking = false;
-    document.getElementById('send-btn').disabled = false;
-    scrollBottom();
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// MESSAGE RENDERING
-// ═══════════════════════════════════════════════════════════════
-function hideEmpty() {
-  const es = document.getElementById('empty-state');
-  if (es) es.remove();
-}
-
-function appendUserMsg(text) {
-  const id = uid();
-  appendMsg(`
-    <div class="msg" id="${id}">
-      <div class="msg-avatar user">U</div>
-      <div class="msg-body">
-        <div class="msg-role">You</div>
-        <div class="msg-text user">${esc(text)}</div>
-      </div>
-    </div>`);
-}
-
-function appendThinking() {
-  const id = uid();
-  appendMsg(`
-    <div class="msg" id="${id}">
-      <div class="msg-avatar ai thinking-active" style="background:none;border:none;">${makeLogoSm()}</div>
-      <div class="msg-body">
-        <div class="msg-role">Dataloom</div>
-        <div class="thinking">
-          <div class="thinking-dot"></div>
-          <div class="thinking-dot"></div>
-          <div class="thinking-dot"></div>
-        </div>
-      </div>
-    </div>`);
-  return id;
-}
-
-function removeThinking(id) {
-  const el = document.getElementById(id);
-  if (el) el.remove();
-}
-
-function appendClarification(text) {
-  appendMsg(`
-    <div class="msg">
-      <div class="msg-avatar ai" style="background:none;border:none;">${makeLogoSm()}</div>
-      <div class="msg-body">
-        <div class="msg-role">Dataloom</div>
-        <div class="msg-clarification">❓ ${esc(text)}</div>
-      </div>
-    </div>`);
-}
-
-function appendError(text) {
-  appendMsg(`
-    <div class="msg">
-      <div class="msg-avatar ai" style="background:none;border:none;">${makeLogoSm()}</div>
-      <div class="msg-body">
-        <div class="msg-role">Dataloom</div>
-        <div class="msg-error">${esc(text)}</div>
-      </div>
-    </div>`);
-}
-
-function appendAiResponse(d) {
-  const msgId   = uid();
-  const sqlId   = uid();
-  const tableId = uid();
-
-  // SQL highlight
-  const sqlHtml = d.sql ? highlightSql(d.sql) : '';
-
-  // ── Confidence badge ──────────────────────────────────────────
-  const conf  = (d.confidence || 'high').toLowerCase();
-  const confLabel = conf === 'high' ? 'High' : conf === 'medium' ? 'Medium' : 'Low';
-  const confBadge = `<span class="badge-confidence ${conf}"><span class="conf-dot"></span>${confLabel}</span>`;
-
-  // ── Self-corrected badge ──────────────────────────────────────
-  const corrBadge = d.corrected
-    ? `<span class="badge-corrected">✓ self-corrected</span>` : '';
-
-  // ── Medium confidence assumption warning ──────────────────────
-  const assumptionHtml = (conf === 'medium')
-    ? `<div class="msg-assumption">⚠ I made an assumption to answer this — verify the result matches your intent.</div>`
-    : '';
-
-  // ── SQL toggle button ─────────────────────────────────────────
-  const sqlToggle = d.sql ? `
-    <button class="sql-toggle" id="tog-${sqlId}" onclick="toggleSql('${sqlId}')">
-      <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1.5 3.5L4.5 6l-3 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M6 8.5h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-      SQL${corrBadge}
-    </button>` : '';
-
-  // ── Export button — only when results exist ───────────────────
-  const exportId  = uid();
-  const exportBtn = (d.records && d.records.length > 0) ? `
-    <div class="export-wrap" id="xwrap-${exportId}">
-      <button class="export-btn" onclick="toggleExportMenu('${exportId}')">
-        <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-          <path d="M6 1v7M3.5 5.5L6 8l2.5-2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M1.5 9.5h9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-        </svg>Export
-      </button>
-      <div class="export-dropdown" id="xdrop-${exportId}">
-        <button onclick="doExport('${exportId}','csv')">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1.5" y="1" width="9" height="10" rx="1" stroke="currentColor" stroke-width="1.1"/><path d="M3.5 4h5M3.5 6h5M3.5 8h3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
-          Download CSV
-        </button>
-        <button onclick="doExport('${exportId}','xlsx')">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1.5" y="1" width="9" height="10" rx="1" stroke="currentColor" stroke-width="1.1"/><path d="M4 4l4 4M8 4l-4 4" stroke="#34D399" stroke-width="1.2" stroke-linecap="round"/></svg>
-          Download Excel
-        </button>
-      </div>
-    </div>` : '';
-
-  const sqlBlock = d.sql ? `<pre class="sql-block" id="${sqlId}">${sqlHtml}</pre>` : '';
-
-  // ── Table ─────────────────────────────────────────────────────
-  const tableHtml = d.records && d.records.length > 0
-    ? buildTable(tableId, d.headers, d.records, d.total_rows)
-    : (d.success && d.total_rows === 0 ? `<div style="font-size:13px;color:var(--text-dim);padding:4px 0;">No results returned.</div>` : '');
-
-  appendMsg(`
-    <div class="msg" id="${msgId}">
-      <div class="msg-avatar ai" style="background:none;border:none;">${makeLogoSm()}</div>
-      <div class="msg-body">
-        <div class="msg-role">Dataloom ${confBadge}</div>
-        ${d.summary ? `<div class="msg-summary">${esc(d.summary)}</div>` : ''}
-        ${assumptionHtml}
-        ${sqlToggle}${exportBtn}
-        ${sqlBlock}
-        ${tableHtml}
-      </div>
-    </div>`);
-
-  // Set up pagination state + export data
-  if (d.records && d.records.length > 0) {
-    window[`_tbl_${tableId}`] = {
-      headers: d.headers,
-      records: d.records,
-      total:   d.total_rows,
-      page:    0,
-    };
-    window[`_exp_${exportId}`] = { headers: d.headers, records: d.records };
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// TABLE
-// ═══════════════════════════════════════════════════════════════
-function buildTable(tableId, headers, records, total) {
-  const PAGE = S.PAGE_SIZE;
-  const page0 = records.slice(0, PAGE);
-  const pages = Math.ceil(total / PAGE);
-  const showing = Math.min(PAGE, records.length);
-
-  const thead = headers.map(h => `<th>${esc(h)}</th>`).join('');
-  const tbody = page0.map(row =>
-    '<tr>' + headers.map(h => {
-      const v = row[h];
-      const isNum = typeof v === 'number' || (typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v) && v.trim() !== '');
-      const display = v === null || v === undefined ? '<span style="color:var(--text-dim)">null</span>' : formatVal(v);
-      return `<td${isNum?' class="num"':''}>${display}</td>`;
-    }).join('') + '</tr>'
-  ).join('');
-
-  const pagination = total > PAGE ? `
-    <div class="result-pagination">
-      <button class="pg-btn" id="pg-prev-${tableId}" onclick="tablePage('${tableId}',-1)" disabled>← Back</button>
-      <span class="pg-info" id="pg-info-${tableId}">1–${showing} of ${total}</span>
-      <button class="pg-btn" id="pg-next-${tableId}" onclick="tablePage('${tableId}',1)" ${pages<=1?'disabled':''}>Next →</button>
-    </div>` : `<span class="pg-info">${total} row${total!==1?'s':''}</span>`;
-
-  return `
-    <div class="result-card">
-      <div class="result-header">
-        <span class="result-meta">${total} row${total!==1?'s':''}</span>
-        ${pagination}
-      </div>
-      <div class="result-table-wrap">
-        <table>
-          <thead><tr>${thead}</tr></thead>
-          <tbody id="tbody-${tableId}">${tbody}</tbody>
-        </table>
-      </div>
-    </div>`;
-}
-
-function tablePage(tableId, dir) {
-  const state = window[`_tbl_${tableId}`];
-  if (!state) return;
-  const PAGE   = S.PAGE_SIZE;
-  const pages  = Math.ceil(state.total / PAGE);
-  state.page   = Math.max(0, Math.min(pages - 1, state.page + dir));
-
-  const start  = state.page * PAGE;
-  const slice  = state.records.slice(start, start + PAGE);
-  const end    = start + slice.length;
-
-  document.getElementById(`tbody-${tableId}`).innerHTML = slice.map(row =>
-    '<tr>' + state.headers.map(h => {
-      const v = row[h];
-      const isNum = typeof v === 'number' || (typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v) && v.trim() !== '');
-      const display = v === null || v === undefined ? '<span style="color:var(--text-dim)">null</span>' : formatVal(v);
-      return `<td${isNum?' class="num"':''}>${display}</td>`;
-    }).join('') + '</tr>'
-  ).join('');
-
-  document.getElementById(`pg-info-${tableId}`).textContent = `${start+1}–${end} of ${state.total}`;
-  document.getElementById(`pg-prev-${tableId}`).disabled = state.page === 0;
-  document.getElementById(`pg-next-${tableId}`).disabled = state.page >= pages - 1;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// SQL HIGHLIGHT
-// ═══════════════════════════════════════════════════════════════
-const SQL_KEYWORDS = /\b(SELECT|FROM|WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|ON|GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|AND|OR|AS|IN|NOT|NULL|IS|BETWEEN|LIKE|DISTINCT|COUNT|SUM|AVG|MIN|MAX|CASE|WHEN|THEN|ELSE|END|WITH|UNION|ALL|EXISTS|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b/gi;
-
-function highlightSql(sql) {
-  return esc(sql)
-    .replace(SQL_KEYWORDS, m => `<span class="sql-kw">${m}</span>`)
-    .replace(/\b([a-z_]+\.[a-z_]+)\b/gi, m => `<span class="sql-tbl">${m}</span>`)
-    .replace(/\b(\d+(\.\d+)?)\b/g, m => `<span class="sql-num">${m}</span>`);
-}
-
-// ── Export ────────────────────────────────────────────────────
-function toggleExportMenu(id) {
-  const wrap = document.getElementById(`xwrap-${id}`);
-  if (!wrap) return;
-  const isOpen = wrap.classList.toggle('open');
-  if (isOpen) {
-    const close = (e) => {
-      if (!wrap.contains(e.target)) {
-        wrap.classList.remove('open');
-        document.removeEventListener('click', close);
-      }
-    };
-    setTimeout(() => document.addEventListener('click', close), 10);
-  }
-}
-
-async function doExport(id, format) {
-  const wrap = document.getElementById(`xwrap-${id}`);
-  if (wrap) wrap.classList.remove('open');
-  const data = window[`_exp_${id}`];
-  if (!data) return;
-  try {
-    const resp = await fetch('/api/export', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ headers: data.headers, records: data.records, format }),
-    });
-    if (!resp.ok) return;
-    const cd  = resp.headers.get('Content-Disposition') || '';
-    const fn  = cd.includes('filename=') ? cd.split('filename=').pop().replace(/["']/g, '').trim() : ('dataloom_export.' + format);
-    const blob = await resp.blob();
-    const url  = URL.createObjectURL(blob);
-    const a    = Object.assign(document.createElement('a'), { href: url, download: fn });
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
-  } catch(e) { console.error('Export error:', e); }
-}
-
-function toggleSql(id) {
-  const block = document.getElementById(id);
-  const btn   = document.getElementById(`tog-${id}`);
-  block.classList.toggle('open');
-  btn.classList.toggle('open');
-}
-
-// ═══════════════════════════════════════════════════════════════
-// CLEAR / NEW
-// ═══════════════════════════════════════════════════════════════
-async function newChat() {
-  await api('/api/clear', 'POST');
-  clearChatDisplay();
-}
-
-async function clearChat() {
-  await api('/api/clear', 'POST');
-  clearChatDisplay();
-}
-
-// Shared logo SVG — generates unique IDs each call to avoid DOM filter collisions
-function makeLogo(size, glowRadius='16', glowOpacity='0.55') {
-  const id = Math.random().toString(36).slice(2,7);
-  return `<svg width="${size}" height="${size}" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 0 ${glowRadius}px rgba(79,70,229,${glowOpacity}));display:block;">
-  <defs>
-    <linearGradient id="lg-${id}" x1="8" y1="6" x2="32" y2="34" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#A5B4FC"/>
-      <stop offset="100%" stop-color="#4F46E5"/>
-    </linearGradient>
-    <filter id="gw-${id}">
-      <feGaussianBlur stdDeviation="1" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-  </defs>
-  <circle cx="20" cy="20" r="17" stroke="url(#lg-${id})" stroke-width="1.7" fill="none"/>
-  <path d="M20 3 C11 7 7.5 13 7.5 20 C7.5 27 11 33 20 37" stroke="url(#lg-${id})" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-  <path d="M20 3 C23 7 24.5 13 24.5 20 C24.5 27 23 33 20 37" stroke="url(#lg-${id})" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-  <path d="M20 3 C29 7 32.5 13 32.5 20 C32.5 27 29 33 20 37" stroke="url(#lg-${id})" stroke-width="1.3" fill="none" stroke-linecap="round" opacity="0.5"/>
-  <path d="M4.5 13 C10 10.5 15 9.5 20 9.5 C25 9.5 30 10.5 35.5 13" stroke="url(#lg-${id})" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-  <path d="M3 20 C8 19 14 18.5 20 18.5 C26 18.5 32 19 37 20" stroke="url(#lg-${id})" stroke-width="1.1" fill="none" stroke-linecap="round" opacity="0.35"/>
-  <path d="M4.5 27 C10 29.5 15 30.5 20 30.5 C25 30.5 30 29.5 35.5 27" stroke="url(#lg-${id})" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-  <path d="M9 28 C13 23 17 17 24 11" stroke="url(#lg-${id})" stroke-width="1.3" fill="none" stroke-linecap="round" opacity="0.8"/>
-  <circle cx="14.5" cy="12.5" r="2"   fill="#C7D2FE" filter="url(#gw-${id})"/>
-  <circle cx="23"   cy="10.5" r="1.7" fill="#A5B4FC" filter="url(#gw-${id})"/>
-  <circle cx="11"   cy="20"   r="2"   fill="#818CF8" filter="url(#gw-${id})"/>
-  <circle cx="22.5" cy="19"   r="1.8" fill="#C7D2FE" filter="url(#gw-${id})"/>
-  <circle cx="9.5"  cy="27.5" r="1.8" fill="#818CF8" filter="url(#gw-${id})"/>
-  <circle cx="26"   cy="28.5" r="2"   fill="#A5B4FC" filter="url(#gw-${id})"/>
-  <circle cx="19.5" cy="30.5" r="1.5" fill="#818CF8" filter="url(#gw-${id})"/>
-</svg>`;
-}
-
-// Small logo for chat avatars — 28px to match user avatar footprint exactly
-function makeLogoSm() {
-  const id = Math.random().toString(36).slice(2,7);
-  return `<svg width="28" height="28" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
-  <defs>
-    <linearGradient id="lg-${id}" x1="8" y1="6" x2="32" y2="34" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#A5B4FC"/>
-      <stop offset="100%" stop-color="#4F46E5"/>
-    </linearGradient>
-  </defs>
-  <circle cx="20" cy="20" r="17" stroke="url(#lg-${id})" stroke-width="2.2" fill="none"/>
-  <path d="M20 3 C11 7 7.5 13 7.5 20 C7.5 27 11 33 20 37" stroke="url(#lg-${id})" stroke-width="2" fill="none" stroke-linecap="round"/>
-  <path d="M20 3 C23 7 24.5 13 24.5 20 C24.5 27 23 33 20 37" stroke="url(#lg-${id})" stroke-width="2" fill="none" stroke-linecap="round"/>
-  <path d="M4.5 13 C10 10.5 15 9.5 20 9.5 C25 9.5 30 10.5 35.5 13" stroke="url(#lg-${id})" stroke-width="2" fill="none" stroke-linecap="round"/>
-  <path d="M4.5 27 C10 29.5 15 30.5 20 30.5 C25 30.5 30 29.5 35.5 27" stroke="url(#lg-${id})" stroke-width="2" fill="none" stroke-linecap="round"/>
-  <path d="M9 28 C13 23 17 17 24 11" stroke="url(#lg-${id})" stroke-width="1.7" fill="none" stroke-linecap="round" opacity="0.75"/>
-  <circle cx="14.5" cy="12.5" r="3" fill="#C7D2FE"/>
-  <circle cx="11"   cy="20"   r="3" fill="#818CF8"/>
-  <circle cx="26"   cy="28.5" r="3" fill="#A5B4FC"/>
-</svg>`;
-}
-
-
-function clearChatDisplay() {
-  document.getElementById('chat-inner').innerHTML = `
-    <div class="empty-state" id="empty-state">
-      <div class="empty-icon">${makeLogo(72)}</div>
-      <div class="empty-title" id="empty-title">Connected to ${esc(S.displayDb)}</div>
-      <div class="empty-sub" id="empty-sub">Ask a question in plain English to query your database.</div>
-      <div class="empty-chips" id="empty-chips"></div>
-    </div>`;
-  S.thinking = false;
-  document.getElementById('send-btn').disabled = false;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// UTILS
-// ═══════════════════════════════════════════════════════════════
-function appendMsg(html) {
-  const ci = document.getElementById('chat-inner');
-  const div = document.createElement('div');
-  div.innerHTML = html.trim();
-  ci.appendChild(div.firstChild);
-  scrollBottom();
-}
-
-function scrollBottom() {
-  const ca = document.getElementById('chat-area');
-  setTimeout(() => ca.scrollTo({ top: ca.scrollHeight, behavior: 'smooth' }), 50);
-}
-
-function formatVal(v) {
-  if (typeof v === 'number') {
-    if (Math.abs(v) >= 1e6) return v.toLocaleString('en-US', { maximumFractionDigits: 2 });
-    if (Number.isInteger(v)) return v.toLocaleString();
-    return parseFloat(v.toFixed(4)).toLocaleString();
-  }
-  if (typeof v === 'string') {
-    const n = parseFloat(v);
-    if (!isNaN(n) && v.trim() !== '') return formatVal(n);
-  }
-  return esc(String(v));
-}
-
-function cleanName(raw) {
-  return raw.replace(/[_\-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
-function abbreviate(s, max) {
-  if (!s) return '—';
-  return s.length > max ? s.slice(0, max) + '…' : s;
-}
-
-function truncate(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
-
-function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
-
-function uid() { return '_' + Math.random().toString(36).slice(2, 9); }
-
-async function api(url, method='GET', body=null) {
-  const opts = { method, headers: {'Content-Type':'application/json'} };
-  if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(url, opts);
-  return res.json();
-}
-
-// Close dropdowns on outside click
-document.addEventListener('click', e => {
-  if (!e.target.closest('#model-selector')) {
-    S.modelDropdownOpen = false;
-    const sel = document.getElementById('model-selector');
-    const dd  = document.getElementById('model-dropdown');
-    if (sel) sel.classList.remove('open');
-    if (dd)  dd.classList.remove('open');
-  }
-  if (!e.target.closest('.db-switcher') && !e.target.closest('#header-db-badge')) {
-    S.dbListOpen = false;
-    document.getElementById('db-list').classList.remove('open');
-  }
-});
-
-// ═══════════════════════════════════════════════════════════════
-// SETTINGS MODAL
-// ═══════════════════════════════════════════════════════════════
-let _descriptions = {};   // full schema_descriptions.json in memory
-let _schemaMap    = {};   // table → [column names]
-
-function openSettings() {
-  document.getElementById('settings-overlay').classList.add('open');
-  loadDescriptions();
-  loadConnectionInfo();
-}
-
-function closeSettings() {
-  document.getElementById('settings-overlay').classList.remove('open');
-}
-
-function closeSettingsOnBackdrop(e) {
-  if (e.target === document.getElementById('settings-overlay')) closeSettings();
-}
-
-function switchTab(name) {
-  document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  document.getElementById(`tab-${name}`).classList.add('active');
-  document.getElementById(`panel-${name}`).classList.add('active');
-}
-
-// ── Schema Tuner ──────────────────────────────────────────────
-async function loadDescriptions() {
-  try {
-    _descriptions = await api('/api/schema/descriptions');
-    // Also pull schema map for column names + types
-    const schema = await api('/api/schema');
-    _schemaMap = schema.tables || {};
-    // Populate table dropdown
-    const sel = document.getElementById('schema-table-select');
-    const tables = Object.keys(_schemaMap).sort();
-    sel.innerHTML = '<option value="">— Select a table —</option>' +
-      tables.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
-    // If only one table, auto-select
-    if (tables.length === 1) {
-      sel.value = tables[0];
-      loadTableFields();
-    }
-  } catch(e) { console.error('loadDescriptions', e); }
-}
-
-function loadTableFields() {
-  const table = document.getElementById('schema-table-select').value;
-  const container = document.getElementById('schema-fields-container');
-  const saveRow   = document.getElementById('schema-save-row');
-
-  if (!table) {
-    container.innerHTML = '<div style="color:var(--text-dim);font-size:13px;text-align:center;padding:24px 0;">Select a table to edit its descriptions.</div>';
-    saveRow.style.display = 'none';
-    return;
-  }
-
-  const tableDesc  = (_descriptions[table] || {});
-  const columns    = _schemaMap[table] || [];
-  const colDesc    = tableDesc;
-
-  let html = `
-    <div class="schema-section-label" style="margin-bottom:12px;">Table — ${esc(table)}</div>
-    <div class="schema-field">
-      <div class="schema-field-header">
-        <span class="schema-field-name">_description</span>
-        <span class="schema-field-type">table</span>
-      </div>
-      <textarea data-table="${esc(table)}" data-col="_description"
-        placeholder="Describe what this table represents and when to use it…"
-        rows="3">${esc(colDesc._description || '')}</textarea>
-    </div>
-    <div class="schema-section-label" style="margin-top:16px;">Columns</div>`;
-
-  columns.forEach(col => {
-    if (col === '_description') return;
-    html += `
-      <div class="schema-field">
-        <div class="schema-field-header">
-          <span class="schema-field-name">${esc(col)}</span>
-        </div>
-        <textarea data-table="${esc(table)}" data-col="${esc(col)}"
-          placeholder="Describe this column's meaning, units, or usage notes…"
-          rows="2">${esc(colDesc[col] || '')}</textarea>
-      </div>`;
-  });
-
-  container.innerHTML = html;
-  saveRow.style.display = 'flex';
-  document.getElementById('save-status').classList.remove('show');
-}
-
-async function saveDescriptions() {
-  const btn = document.getElementById('schema-save-btn');
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
-
-  // Collect all textarea values into _descriptions
-  document.querySelectorAll('#schema-fields-container textarea').forEach(ta => {
-    const table = ta.dataset.table;
-    const col   = ta.dataset.col;
-    const val   = ta.value.trim();
-    if (!_descriptions[table]) _descriptions[table] = {};
-    if (val) {
-      _descriptions[table][col] = val;
-    } else {
-      delete _descriptions[table][col];
-    }
-    // Clean up empty table entries
-    if (Object.keys(_descriptions[table]).length === 0) {
-      delete _descriptions[table];
-    }
-  });
-
-  try {
-    await api('/api/schema/descriptions', 'POST', _descriptions);
-    document.getElementById('save-status').classList.add('show');
-    setTimeout(() => document.getElementById('save-status').classList.remove('show'), 3000);
-  } catch(e) {
-    alert('Save failed: ' + e.message);
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 7l3.5 3.5L11 3" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Save & Apply';
-  }
-}
-
-// ── Connection Manager ────────────────────────────────────────
-async function loadConnectionInfo() {
-  try {
-    const d = await api('/api/status');
-    const grid = document.getElementById('conn-grid');
-    const rows = [
-      ['Database',  d.display_name || d.db_name || '—'],
-      ['DB Type',   d.db_type     || '—'],
-      ['Tables',    d.tables      || '0'],
-      ['Status',    d.configured  ? '● Connected' : '✗ Disconnected'],
-      ['Model',     d.model       || '—'],
-      ['Provider',  d.provider    || '—'],
-    ];
-    grid.innerHTML = rows.map(([label, value]) => `
-      <div class="conn-cell">
-        <div class="conn-cell-label">${label}</div>
-        <div class="conn-cell-value ${label==='Status'&&d.configured?'ok':''}">${esc(String(value))}</div>
-      </div>`).join('');
-    // Show all connected databases
-    if (d.databases && d.databases.length > 1) {
-      grid.innerHTML += `
-        <div class="conn-cell" style="grid-column:1/-1;">
-          <div class="conn-cell-label">All Sessions</div>
-          <div class="conn-cell-value" style="font-size:12px;">${d.databases.map(cleanName).join(' · ')}</div>
-        </div>`;
-    }
-  } catch(e) {}
-}
-
-
-// ── Welcome modal ─────────────────────────────────────────────────────────
-function showWelcome() {
-  document.getElementById('welcome-overlay').classList.add('visible');
-}
-function closeWelcome() {
-  document.getElementById('welcome-overlay').classList.remove('visible');
-  // Remember for this session so it doesn't re-show on every page load
-  try { sessionStorage.setItem('dl_welcomed', '1'); } catch(e) {}
-}
-// Keyboard shortcut: Escape to close modal
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeSettings();
-});
-
-// Home button — clear chat display and reload history chips
-async function goHome() {
-  clearChatDisplay();
-  await loadHistory();
-}
-
-init().then(() => {
-  // Show welcome modal after init so DOM elements exist
-  try {
-    if (!sessionStorage.getItem('dl_welcomed')) showWelcome();
-  } catch(e) { showWelcome(); }
-});
-</script>
-
-<!-- ── Welcome Modal ──────────────────────────────────────────────────── -->
+<!-- Welcome Modal (keeping original structure) -->
 <div class="modal-overlay" id="welcome-overlay">
   <div class="modal" style="max-width:520px">
     <div class="modal-header" style="border-bottom:1px solid var(--border); padding:20px 24px 16px">
@@ -2299,7 +1238,7 @@ init().then(() => {
 
       <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px">
         <div style="font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--text-secondary);text-transform:uppercase;margin-bottom:12px">Demo Database — Olist E-commerce</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(120px, 1fr));gap:10px">
           <div style="background:var(--bg-card);border-radius:8px;padding:12px">
             <div style="font-size:20px;font-weight:700;color:var(--accent)">57,165</div>
             <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Orders</div>
@@ -2314,7 +1253,7 @@ init().then(() => {
           </div>
           <div style="background:var(--bg-card);border-radius:8px;padding:12px">
             <div style="font-size:20px;font-weight:700;color:var(--accent)">27</div>
-            <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Product categories</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Categories</div>
           </div>
         </div>
         <div style="font-size:12px;color:var(--text-secondary);margin-top:12px;line-height:1.6">
@@ -2328,6 +1267,89 @@ init().then(() => {
     </div>
   </div>
 </div>
+
+<script>
+// Mobile menu handling
+const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+const sidebar = document.getElementById('sidebar');
+const mobileOverlay = document.getElementById('mobileOverlay');
+
+mobileMenuBtn.addEventListener('click', () => {
+  sidebar.classList.toggle('mobile-open');
+  mobileOverlay.classList.toggle('active');
+  document.body.style.overflow = sidebar.classList.contains('mobile-open') ? 'hidden' : '';
+});
+
+mobileOverlay.addEventListener('click', () => {
+  sidebar.classList.remove('mobile-open');
+  mobileOverlay.classList.remove('active');
+  document.body.style.overflow = '';
+});
+
+// Close mobile menu when nav item is clicked
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    if (window.innerWidth <= 640) {
+      sidebar.classList.remove('mobile-open');
+      mobileOverlay.classList.remove('active');
+      document.body.style.overflow = '';
+    }
+  });
+});
+
+// Sidebar toggle for desktop
+function toggleSidebar() {
+  sidebar.classList.toggle('collapsed');
+}
+
+// Page navigation
+function showPage(page) {
+  document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+  event.target.closest('.nav-item').classList.add('active');
+  
+  const titles = {
+    home: 'Home',
+    history: 'Query History',
+    schema: 'Database Schema',
+    database: 'Database Connection',
+    settings: 'Settings'
+  };
+  
+  document.getElementById('pageTitle').textContent = titles[page] || page;
+}
+
+// Welcome modal
+function closeWelcome() {
+  document.getElementById('welcome-overlay').classList.remove('visible');
+  try { sessionStorage.setItem('dl_welcomed', '1'); } catch(e) {}
+}
+
+// Show welcome on first visit
+try {
+  if (!sessionStorage.getItem('dl_welcomed')) {
+    setTimeout(() => {
+      document.getElementById('welcome-overlay').classList.add('visible');
+    }, 500);
+  }
+} catch(e) {
+  setTimeout(() => {
+    document.getElementById('welcome-overlay').classList.add('visible');
+  }, 500);
+}
+
+// Auto-resize textarea
+document.querySelectorAll('.input-bar textarea').forEach(textarea => {
+  textarea.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 200) + 'px';
+  });
+});
+
+// Prevent iOS zoom on input focus
+if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+  document.addEventListener('touchstart', function() {}, {passive: true});
+}
+</script>
 
 </body>
 </html>
