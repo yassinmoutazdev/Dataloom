@@ -980,6 +980,69 @@
   #welcome-overlay { display: none; }
   #welcome-overlay.visible { display: flex; }
 
+/* ── Mobile Responsiveness ─────────────────────────────────── */
+@media (max-width: 768px) {
+  :root {
+    --sidebar-w: 0px; 
+    --sidebar-w-collapsed: 0px;
+  }
+
+  .sidebar {
+    position: absolute;
+    left: -280px; /* Hidden off-screen */
+    width: 280px !important;
+    height: 100%;
+    z-index: 1000;
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: var(--bg-surface);
+    box-shadow: 20px 0 50px rgba(0,0,0,0.5);
+  }
+
+  /* When active on mobile */
+  .sidebar.mobile-open {
+    left: 0;
+  }
+
+  /* Overlay to dim the background when menu is open */
+  .mobile-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 999;
+    backdrop-filter: blur(2px);
+  }
+  .mobile-overlay.active { display: block; }
+
+  .header { padding: 0 12px; gap: 8px; }
+  .header-wordmark { display: none; } /* Hide logo text to save space */
+  
+  .chat-inner, .input-inner {
+    max-width: 100%;
+    padding: 0 12px;
+  }
+
+  .msg-text.user { max-width: 90%; }
+  
+  /* Show a menu button on mobile only */
+  .mobile-menu-btn {
+    display: flex !important;
+  }
+}
+
+/* Helper for the menu button */
+.mobile-menu-btn {
+  display: none;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
 </style>
 </head>
 <body>
