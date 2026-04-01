@@ -323,7 +323,10 @@
   ═══════════════════════════════════════════════════════════ */
   .main {
     flex: 1; display: flex; flex-direction: column;
-    min-width: 0; height: 100vh; overflow: hidden;
+    min-width: 0;
+    height: 100vh;          /* fallback for old browsers */
+    height: 100dvh;         /* dynamic viewport — accounts for mobile browser UI */
+    overflow: hidden;
   }
 
   /* Header */
@@ -1014,6 +1017,9 @@
 
   /* ── Mobile (≤768px) ─────────────────────────────────────── */
   @media (max-width: 768px) {
+    /* Fix viewport height on mobile browsers (address bar eats into 100vh) */
+    body, .main { height: 100dvh; }
+
     /* Sidebar becomes off-canvas drawer */
     .sidebar {
       position: fixed; left: 0; top: 0; bottom: 0;
@@ -2020,10 +2026,25 @@ async function doExport(id, format) {
     const cd  = resp.headers.get('Content-Disposition') || '';
     const fn  = cd.includes('filename=') ? cd.split('filename=').pop().replace(/["']/g, '').trim() : ('dataloom_export.' + format);
     const blob = await resp.blob();
-    const url  = URL.createObjectURL(blob);
-    const a    = Object.assign(document.createElement('a'), { href: url, download: fn });
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
+    // Mobile-compatible download: use FileReader to convert to base64 data URL
+    // because createObjectURL + a.click() doesn't trigger downloads on Android/iOS
+    if (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+      const reader = new FileReader();
+      reader.onload = function() {
+        const a = Object.assign(document.createElement('a'), {
+          href: reader.result,
+          download: fn,
+          target: '_blank',
+        });
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      };
+      reader.readAsDataURL(blob);
+    } else {
+      const url = URL.createObjectURL(blob);
+      const a   = Object.assign(document.createElement('a'), { href: url, download: fn });
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+    }
   } catch(e) { console.error('Export error:', e); }
 }
 
@@ -2360,10 +2381,16 @@ async function goHome() {
 }
 
 init().then(() => {
-  // Show welcome modal after init so DOM elements exist
-  try {
-    if (!sessionStorage.getItem('dl_welcomed')) showWelcome();
-  } catch(e) { showWelcome(); }
+  // Defer welcome check to next tick — ensures DOM is fully painted
+  // Also clear stale sessionStorage so mobile fresh sessions always see it
+  setTimeout(() => {
+    try {
+      if (!sessionStorage.getItem('dl_welcomed')) showWelcome();
+    } catch(e) {
+      // sessionStorage unavailable (private browsing etc.) — always show
+      showWelcome();
+    }
+  }, 0);
 });
 </script>
 
