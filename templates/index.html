@@ -2365,9 +2365,12 @@ function showWelcome() {
   document.getElementById('welcome-overlay').classList.add('visible');
 }
 function closeWelcome() {
+  // If "don't show again" is checked, persist to localStorage
+  const cb = document.getElementById('welcome-dont-show');
+  if (cb && cb.checked) {
+    try { localStorage.setItem('dl_hide_welcome', '1'); } catch(e) {}
+  }
   document.getElementById('welcome-overlay').classList.remove('visible');
-  // Remember for this session so it doesn't re-show on every page load
-  try { sessionStorage.setItem('dl_welcomed', '1'); } catch(e) {}
 }
 // Keyboard shortcut: Escape to close modal
 document.addEventListener('keydown', e => {
@@ -2381,13 +2384,12 @@ async function goHome() {
 }
 
 init().then(() => {
-  // Defer welcome check to next tick — ensures DOM is fully painted
-  // Also clear stale sessionStorage so mobile fresh sessions always see it
+  // Show welcome on every visit unless user has checked "don't show again"
   setTimeout(() => {
     try {
-      if (!sessionStorage.getItem('dl_welcomed')) showWelcome();
+      if (!localStorage.getItem('dl_hide_welcome')) showWelcome();
     } catch(e) {
-      // sessionStorage unavailable (private browsing etc.) — always show
+      // localStorage unavailable (private browsing) — always show
       showWelcome();
     }
   }, 0);
@@ -2453,6 +2455,13 @@ init().then(() => {
           Real Brazilian e-commerce data. Ask anything about revenue, delivery times, product performance, or customer behaviour.
         </div>
       </div>
+
+      <!-- Don't show again -->
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;cursor:pointer;user-select:none">
+        <input type="checkbox" id="welcome-dont-show"
+          style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer;flex-shrink:0">
+        <span style="font-size:12.5px;color:var(--text-secondary)">Don't show this again</span>
+      </label>
 
       <button onclick="closeWelcome()" style="width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .2s" onmouseover="this.style.background='var(--accent-hover)'" onmouseout="this.style.background='var(--accent)'">
         Start exploring →
