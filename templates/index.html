@@ -979,9 +979,8 @@
   }
   .conn-switch-btn:hover { border-color: var(--accent-border); color: var(--accent); }
   
-  /* Welcome modal — hidden by default, shown on first session load */
-  #welcome-overlay { display: none; }
-  #welcome-overlay.visible { display: flex; }
+  /* Welcome modal — uses same .open pattern as settings modal */
+  #welcome-overlay { display: flex; }  /* always flex so opacity transition works */
 
 
   /* ═══════════════════════════════════════════════════════════
@@ -2422,7 +2421,7 @@ async function loadConnectionInfo() {
 
 // ── Welcome modal ─────────────────────────────────────────────────────────
 function showWelcome() {
-  document.getElementById('welcome-overlay').classList.add('visible');
+  document.getElementById('welcome-overlay').classList.add('open');
 }
 function closeWelcome() {
   // If "don't show again" is checked, persist to localStorage
@@ -2430,7 +2429,7 @@ function closeWelcome() {
   if (cb && cb.checked) {
     try { localStorage.setItem('dl_hide_welcome', '1'); } catch(e) {}
   }
-  document.getElementById('welcome-overlay').classList.remove('visible');
+  document.getElementById('welcome-overlay').classList.remove('open');
 }
 // Keyboard shortcut: Escape to close modal
 document.addEventListener('keydown', e => {
