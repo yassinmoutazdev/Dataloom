@@ -1123,6 +1123,23 @@
     }
   }
 
+
+  /* ── Pull-to-refresh indicator (mobile) ──────────────────────────────── */
+  #ptr-indicator {
+    display: none;
+    position: fixed; top: 0; left: 0; right: 0; z-index: 300;
+    justify-content: center; align-items: center;
+    height: 52px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    font-size: 13px; color: var(--text-secondary);
+    gap: 8px;
+    transition: transform 0.2s ease;
+  }
+  #ptr-indicator.visible { display: flex; }
+  #ptr-indicator svg { animation: ptr-spin 0.8s linear infinite; }
+  @keyframes ptr-spin { to { transform: rotate(360deg); } }
+
 </style>
 </head>
 <body>
@@ -2360,6 +2377,49 @@ async function loadConnectionInfo() {
 }
 
 
+
+// ── Pull-to-refresh (mobile) ──────────────────────────────────────────────
+(function() {
+  let startY = 0, pulling = false, triggered = false;
+  const THRESHOLD = 72;  // px to pull before triggering refresh
+
+  document.addEventListener('touchstart', e => {
+    // Only activate when scrolled to top of chat area
+    const chat = document.getElementById('chat-area');
+    if (chat && chat.scrollTop === 0) {
+      startY = e.touches[0].clientY;
+      pulling = true;
+      triggered = false;
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchmove', e => {
+    if (!pulling) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy > 10 && !triggered) {
+      document.getElementById('ptr-indicator').classList.add('visible');
+    }
+    if (dy > THRESHOLD && !triggered) {
+      triggered = true;
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchend', () => {
+    if (!pulling) return;
+    pulling = false;
+    const ind = document.getElementById('ptr-indicator');
+    if (triggered) {
+      // Refresh: re-run init to reconnect + reload state
+      setTimeout(() => {
+        ind.classList.remove('visible');
+        window.location.reload();
+      }, 400);
+    } else {
+      ind.classList.remove('visible');
+    }
+  });
+})();
+
 // ── Welcome modal ─────────────────────────────────────────────────────────
 function showWelcome() {
   document.getElementById('welcome-overlay').classList.add('visible');
@@ -2383,18 +2443,27 @@ async function goHome() {
   await loadHistory();
 }
 
-init().then(() => {
-  // Show welcome on every visit unless user has checked "don't show again"
-  setTimeout(() => {
-    try {
-      if (!localStorage.getItem('dl_hide_welcome')) showWelcome();
-    } catch(e) {
-      // localStorage unavailable (private browsing) — always show
-      showWelcome();
-    }
-  }, 0);
+init();
+
+// Show welcome after FULL page load — guarantees welcome-overlay div exists
+// regardless of connection speed or DOM parse order
+window.addEventListener('load', () => {
+  try {
+    if (!localStorage.getItem('dl_hide_welcome')) showWelcome();
+  } catch(e) {
+    showWelcome();
+  }
 });
 </script>
+
+
+<!-- ── Pull-to-refresh indicator ─────────────────────────────────────── -->
+<div id="ptr-indicator">
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <path d="M8 2a6 6 0 1 0 6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  </svg>
+  Refreshing…
+</div>
 
 <!-- ── Mobile sidebar backdrop ──────────────────────────────────────────── -->
 <div id="sidebar-backdrop" onclick="closeMobileSidebar()"></div>

@@ -428,6 +428,10 @@ def api_export():
 def query():
     ctx = _get_active_context()
     if not ctx:
+        # Silent auto-reconnect — handles Railway session expiry without page refresh
+        _try_auto_connect()
+        ctx = _get_active_context()
+    if not ctx:
         return jsonify({"error": "No database connected. Please complete setup."}), 400
 
     data     = request.json or {}
