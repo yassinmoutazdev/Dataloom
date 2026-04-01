@@ -31,7 +31,7 @@ import re
 import sys
 import uuid
 import time
-from flask import Flask, request, jsonify, send_from_directory, session, redirect, url_for
+from flask import Flask, request, jsonify, send_from_directory, send_file, session, redirect, url_for
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -63,6 +63,11 @@ from schema import get_schema
 from memory import IntentMemory
 from core import run_pipeline, init_join_paths
 import history_store
+try:
+    from utils import export_csv, export_excel, make_export_filename
+    HAS_UTILS = True
+except ImportError:
+    HAS_UTILS = False
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.secret_key = os.getenv("FLASK_SECRET", os.urandom(24).hex())
@@ -377,6 +382,47 @@ def add_database():
 
 
 # ── Query API ─────────────────────────────────────────────────────
+
+
+@app.route("/api/export", methods=["POST"])
+def api_export():
+    """Export query results as CSV or Excel."""
+    data    = request.get_json(force=True) or {}
+    headers = data.get("headers", [])
+    records = data.get("records", [])
+    fmt     = data.get("format", "csv").lower()
+
+    if not headers or not records:
+        return jsonify({"error": "No data to export."}), 400
+
+    if not HAS_UTILS:
+        return jsonify({"error": "Export module not available."}), 500
+
+    try:
+        filename = make_export_filename(fmt)
+        if fmt == "xlsx":
+            try:
+                file_bytes = export_excel(headers, records)
+                mimetype   = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            except RuntimeError:
+                # openpyxl not installed — fall back to CSV
+                file_bytes = export_csv(headers, records)
+                mimetype   = "text/csv"
+                filename   = filename.replace(".xlsx", ".csv")
+        else:
+            file_bytes = export_csv(headers, records)
+            mimetype   = "text/csv"
+
+        buf = __import__('io').BytesIO(file_bytes)
+        return send_file(
+            buf,
+            mimetype=mimetype,
+            as_attachment=True,
+            download_name=filename,
+        )
+    except Exception as e:
+        return jsonify({"error": f"Export failed: {e}"}), 500
+
 
 @app.route("/api/query", methods=["POST"])
 def query():
