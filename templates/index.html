@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -981,69 +980,143 @@
   #welcome-overlay { display: none; }
   #welcome-overlay.visible { display: flex; }
 
-/* ── Mobile Responsiveness ─────────────────────────────────── */
-@media (max-width: 768px) {
-  :root {
-    --sidebar-w: 0px; 
-    --sidebar-w-collapsed: 0px;
-  }
 
-  .sidebar {
-    position: absolute;
-    left: -280px; /* Hidden off-screen */
-    width: 280px !important;
-    height: 100%;
-    z-index: 1000;
-    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    background: var(--bg-surface);
-    box-shadow: 20px 0 50px rgba(0,0,0,0.5);
-  }
+  /* ═══════════════════════════════════════════════════════════
+     RESPONSIVE — MOBILE & TABLET
+  ═══════════════════════════════════════════════════════════ */
 
-  /* When active on mobile */
-  .sidebar.mobile-open {
-    left: 0;
-  }
-
-  /* Overlay to dim the background when menu is open */
-  .mobile-overlay {
+  /* Hamburger — hidden on desktop */
+  .hamburger-btn {
     display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.6);
-    z-index: 999;
+    background: none; border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    width: 32px; height: 32px;
+    color: var(--text-secondary); cursor: pointer;
+    align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: all var(--transition);
+  }
+  .hamburger-btn:hover { background: var(--bg-elevated); color: var(--text-primary); }
+
+  /* Mobile sidebar backdrop */
+  #sidebar-backdrop {
+    display: none;
+    position: fixed; inset: 0; z-index: 149;
+    background: rgba(0,0,0,0.55);
     backdrop-filter: blur(2px);
   }
-  .mobile-overlay.active { display: block; }
+  #sidebar-backdrop.visible { display: block; }
 
-  .header { padding: 0 12px; gap: 8px; }
-  .header-wordmark { display: none; } /* Hide logo text to save space */
-  
-  .chat-inner, .input-inner {
-    max-width: 100%;
-    padding: 0 12px;
+  /* ── Tablet (≤900px) ─────────────────────────────────────── */
+  @media (max-width: 900px) {
+    .header-brand-name { display: none; }
   }
 
-  .msg-text.user { max-width: 90%; }
-  
-  /* Show a menu button on mobile only */
-  .mobile-menu-btn {
-    display: flex !important;
-  }
-}
+  /* ── Mobile (≤768px) ─────────────────────────────────────── */
+  @media (max-width: 768px) {
+    /* Sidebar becomes off-canvas drawer */
+    .sidebar {
+      position: fixed; left: 0; top: 0; bottom: 0;
+      z-index: 150;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease, width var(--transition), min-width var(--transition);
+      width: var(--sidebar-w) !important;
+      min-width: var(--sidebar-w) !important;
+    }
+    .sidebar.mobile-open {
+      transform: translateX(0);
+    }
+    /* Collapsed class has no effect on mobile — sidebar is always full width when open */
+    .sidebar.collapsed {
+      width: var(--sidebar-w) !important;
+      min-width: var(--sidebar-w) !important;
+    }
+    .sidebar.collapsed .logo-text,
+    .sidebar.collapsed .nav-label,
+    .sidebar.collapsed .db-name-text,
+    .sidebar.collapsed .history-empty,
+    .sidebar.collapsed .sidebar-section-label,
+    .sidebar.collapsed .history-clear-btn { opacity: 1; pointer-events: auto; }
+    .sidebar.collapsed .logo-mark { display: flex; }
+    .sidebar.collapsed .sidebar-header { padding: 0 14px; justify-content: flex-start; }
+    .sidebar.collapsed .sidebar-toggle { margin-left: auto; }
 
-/* Helper for the menu button */
-.mobile-menu-btn {
-  display: none;
-  width: 36px;
-  height: 36px;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  cursor: pointer;
-}
+    /* Desktop sidebar toggle hidden on mobile */
+    .sidebar-toggle { display: none; }
+
+    /* Main takes full width */
+    .main { width: 100%; }
+
+    /* Show hamburger */
+    .hamburger-btn { display: flex; }
+
+    /* Header tightens */
+    .header { padding: 0 12px; gap: 8px; }
+
+    /* Chat inner padding tightens */
+    .chat-inner { padding: 0 12px; }
+
+    /* Input bar tightens */
+    .input-wrap { padding: 10px 12px 16px; }
+
+    /* Chips smaller */
+    .chip { font-size: 12px; padding: 7px 12px; }
+
+    /* Empty state scales down */
+    .empty-state { padding: 24px 16px; }
+    .empty-icon svg { width: 52px !important; height: 52px !important; }
+    .empty-title { font-size: 18px !important; }
+
+    /* Message bubbles */
+    .msg-bubble { max-width: 100% !important; }
+
+    /* Result table — ensure horizontal scroll */
+    .result-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+    /* Model selector label truncates */
+    .model-pill { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  }
+
+  /* ── Small phones (≤480px) ───────────────────────────────── */
+  @media (max-width: 480px) {
+    /* Modals go full screen */
+    .modal-overlay { padding: 0; align-items: flex-end; }
+    .modal {
+      width: 100% !important;
+      max-width: 100% !important;
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    /* Welcome modal stats: single column */
+    #welcome-overlay .modal { border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important; }
+
+    /* Header: hide db badge text on very small screens */
+    #header-db-name { max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Model pill even shorter */
+    .model-pill { max-width: 60px; }
+
+    /* Input hint hidden on tiny screens */
+    .input-hint { display: none; }
+
+    /* Chat inner no side padding */
+    .chat-inner { padding: 0 8px; }
+    .input-wrap { padding: 8px 8px 12px; }
+
+    /* Empty state chips single column feel */
+    .empty-chips { gap: 6px; }
+    .chip { font-size: 11.5px; padding: 6px 10px; }
+  }
+
+  /* Welcome modal stats grid responsive */
+  @media (max-width: 400px) {
+    #welcome-overlay [style*="grid-template-columns:1fr 1fr"] {
+      grid-template-columns: 1fr !important;
+    }
+  }
+
 </style>
 </head>
 <body>
@@ -1182,6 +1255,13 @@
       </div>
       <span class="header-brand-name">Dataloom</span>
     </div>
+
+    <!-- Hamburger — mobile only -->
+    <button class="hamburger-btn" id="hamburger-btn" onclick="openMobileSidebar()" aria-label="Open menu">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <path d="M2 4h14M2 9h14M2 14h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+    </button>
 
     <!-- DB badge -->
     <div class="header-db-badge" id="header-db-badge" onclick="toggleDbList()">
@@ -1411,14 +1491,33 @@ async function loadHistory() {
 // ═══════════════════════════════════════════════════════════════
 // SIDEBAR
 // ═══════════════════════════════════════════════════════════════
+function isMobile() { return window.innerWidth <= 768; }
+
 function toggleSidebar() {
+  if (isMobile()) { openMobileSidebar(); return; }
   S.sidebarCollapsed = !S.sidebarCollapsed;
   const sb = document.getElementById('sidebar');
   sb.classList.toggle('collapsed', S.sidebarCollapsed);
-  // Flip arrow
   const icon = sb.querySelector('.sidebar-toggle svg path');
   if (icon) icon.setAttribute('d', S.sidebarCollapsed ? 'M6 3l5 5-5 5' : 'M10 3L5 8l5 5');
 }
+
+function openMobileSidebar() {
+  document.getElementById('sidebar').classList.add('mobile-open');
+  document.getElementById('sidebar-backdrop').classList.add('visible');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeMobileSidebar() {
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebar-backdrop').classList.remove('visible');
+  document.body.style.overflow = '';
+}
+
+// Close mobile sidebar on resize to desktop
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 768) closeMobileSidebar();
+});
 
 function toggleDbList() {
   S.dbListOpen = !S.dbListOpen;
@@ -1616,12 +1715,14 @@ function setupInput() {
 }
 
 function sendDirect(q) {
+  if (isMobile()) closeMobileSidebar();
   document.getElementById('question-input').value = q;
   sendQuestion();
 }
 
 async function sendQuestion() {
   if (S.thinking) return;
+  if (isMobile()) closeMobileSidebar();
   const inp      = document.getElementById('question-input');
   const question = inp.value.trim();
   if (!question) return;
@@ -2265,6 +2366,9 @@ init().then(() => {
   } catch(e) { showWelcome(); }
 });
 </script>
+
+<!-- ── Mobile sidebar backdrop ──────────────────────────────────────────── -->
+<div id="sidebar-backdrop" onclick="closeMobileSidebar()"></div>
 
 <!-- ── Welcome Modal ──────────────────────────────────────────────────── -->
 <div class="modal-overlay" id="welcome-overlay">
