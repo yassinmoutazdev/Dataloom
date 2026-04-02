@@ -1,5 +1,9 @@
-"""
-core.py — shared query pipeline used by both CLI (main.py) and web UI (app.py)
+"""Shared query pipeline for Dataloom.
+
+This module coordinates the transformation of natural language questions into
+executable SQL queries. It manages intent parsing, validation, SQL building,
+query execution, and result summarization. It serves as the primary interface
+for both CLI and Web UI components.
 """
 from intent_parser import parse_intent, parse_retry, parse_validation_retry, is_vague_question, _strip_meta
 from validator import validate_intent, set_join_paths, humanize_errors
@@ -9,15 +13,25 @@ from memory import IntentMemory
 
 
 def init_join_paths(join_paths: dict):
-    """Call at startup with auto-discovered FK paths from schema.py."""
+    """Register foreign key paths for SQL join generation.
+
+    Args:
+        join_paths: A dictionary mapping table pairs to their join keys.
+    """
     set_join_paths(join_paths)
 
 
 def _looks_like_connection_error(exc: Exception) -> bool:
-    """
-    Heuristic: returns True if the exception looks like a dropped/lost
-    DB connection rather than a SQL logic error.
-    Covers psycopg2, mysql-connector, and sqlite3.
+    """Identify if an exception indicates a lost or dropped database connection.
+
+    Uses a heuristic approach to distinguish between SQL syntax/logic errors
+    and infrastructure-level failures across multiple database drivers.
+
+    Args:
+        exc: The exception caught during query execution.
+
+    Returns:
+        True if the error suggests a connection loss, False otherwise.
     """
     try:
         import psycopg2
@@ -60,10 +74,34 @@ def run_pipeline(
     db_type: str,
     credentials: dict = None,
 ) -> dict:
-    """
-    Run the full query pipeline for a single question.
-    Returns a result dict with keys:
-      success, intent, sql, headers, rows, summary, error, corrected, clarification
+    """Execute the full query pipeline for a single natural language question.
+
+    Coordinates intent extraction, validation, SQL building, execution,
+    automatic error correction, and summarization.
+
+    Args:
+        question: The user's input question.
+        schema_text: Plain-text schema representation for the LLM.
+        schema_map: Dictionary mapping tables to their columns and FKs.
+        schema_types: Dictionary mapping columns to their data types.
+        memory: IntentMemory instance for context-aware queries and history.
+        model_config: Configuration for the LLM (model name, temperature, etc.).
+        conn: The active database connection object.
+        db_type: The database engine type (e.g., 'sqlite', 'postgres', 'mysql').
+        credentials: Optional connection details used for automatic reconnection.
+
+    Returns:
+        A dictionary containing the query result:
+            - success: True if rows were successfully fetched.
+            - intent: The final parsed and merged intent object.
+            - sql: The final SQL query that was executed.
+            - headers: Column names for the result set.
+            - rows: The actual data returned by the database.
+            - summary: LLM-generated summary of the findings.
+            - error: Human-readable error message on failure.
+            - corrected: True if the query required model self-correction.
+            - clarification: Prompt for more info if the question was vague.
+            - confidence: The model's reported confidence level.
     """
     from db_connector import run_query, rollback, reconnect
 
@@ -80,12 +118,12 @@ def run_pipeline(
         "confidence":    "high",   # populated after intent parse
     }
 
-    # 1. Pre-screen vague questions
+    # Pre-screen for questions that lack sufficient detail to be answered
     if is_vague_question(question):
         result["clarification"] = "Could you be more specific? For example: 'What is the total revenue this month?' or 'How many orders were placed last week?'"
         return result
 
-    # 2. Parse intent (with timeout)
+    # Extract structured intent from the natural language question
     try:
         recent_intents = [e["intent"] for e in memory.get_recent(3)]
         intent = parse_intent(question, schema_text, recent_intents, model_config)
@@ -96,30 +134,30 @@ def run_pipeline(
         result["error"] = f"Intent parsing failed: {e}"
         return result
 
-    # 3. Capture confidence (always, before any early return)
+    # Always capture confidence to ensure observability even on early returns
     result["confidence"] = (intent.get("confidence") or "high").lower()
 
-    # Clarification check
+    # Model might proactively request more information
     if intent.get("clarification_needed"):
         result["clarification"] = intent["clarification_needed"]
         return result
 
-    # 4. Post-validation vagueness check
+    # Prevent very short, ambiguous metrics (e.g., "count") from producing meaningless SQL
     metric = (intent.get("metric") or "").lower()
     generic_metrics = {"count", "total", "number", "sum", "avg", "value", "amount"}
     if metric in generic_metrics and len(question.split()) <= 5:
         result["clarification"] = "Could you be more specific? What would you like to measure?"
         return result
 
-    # 5. Follow-up detection
+    # Merge context from previous turns for conversational continuity
     if memory.is_followup(intent):
         intent = memory.merge_with_previous(intent)
 
-    # 6. Inject question for ranking detection
+    # Inject question for ranking detection downstream
     intent["_question"] = question
     result["intent"] = intent
 
-    # 7. Validate (strip confidence/reasoning before schema checks)
+    # Validate the intent against the actual database schema structure
     clean_intent = _strip_meta(intent)
     is_valid, errors = validate_intent(clean_intent, schema_map, schema_types)
     if not is_valid:
@@ -127,7 +165,7 @@ def run_pipeline(
         result["error_detail"] = errors   # preserved for logging/observability
         return result
 
-    # 8. Build SQL (returns sql string + params list)
+    # Construct the SQL query and its parameterized arguments
     try:
         sql, params = build_sql(clean_intent, db_type)
         result["sql"] = sql
@@ -139,13 +177,13 @@ def run_pipeline(
         result["error_detail"] = [str(e)]
         return result
 
-    # 9. Execute — with connection-recovery + one SQL auto-retry on failure
+    # Attempt query execution with infrastructure recovery and model self-correction logic
     try:
         headers, rows = run_query(conn, sql, db_type, params)
     except Exception as first_error:
         rollback(conn, db_type)
 
-        # ── Connection recovery: reconnect then retry the same SQL ──
+        # Infrastructure recovery: reconnect then retry the same SQL
         _is_conn_error = _looks_like_connection_error(first_error)
         if _is_conn_error:
             try:
@@ -163,7 +201,7 @@ def run_pipeline(
                 result["error_detail"] = [str(first_error), str(reconnect_error)]
                 return result
         else:
-            # ── SQL error: ask model to self-correct ──────────────────
+            # SQL logic error: ask the model to rewrite the query based on the database error message
             try:
                 fixed_intent = parse_retry(sql, str(first_error), intent, model_config)
                 is_valid2, errors2 = validate_intent(fixed_intent, schema_map, schema_types)
@@ -193,7 +231,7 @@ def run_pipeline(
     result["headers"] = headers
     result["rows"]    = [list(r) for r in rows]
 
-    # 10. Summarize (local, with timeout guard)
+    # Summarize results into natural language with a timeout guard
     try:
         result["summary"] = summarize(
             question, rows[:20], headers, model_config,
@@ -202,7 +240,7 @@ def run_pipeline(
     except Exception:
         result["summary"] = ""
 
-    # 11. Save to memory
+    # Persist successfully resolved intents to the history store
     memory.add(intent, question)
     result["success"] = True
     return result
