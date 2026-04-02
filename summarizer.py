@@ -1,5 +1,13 @@
+"""
+Query result summarization using LLM providers.
+
+This module provides functionality to generate natural language summaries of
+database query results using either OpenAI or Ollama models. It handles
+pagination awareness and result formatting for LLM consumption.
+"""
 import json
 
+# Optional imports - allows module to work with either provider installed
 try:
     import ollama
 except ImportError:
@@ -25,6 +33,28 @@ Rules:
 
 def summarize(question: str, results: list, headers: list,
               model_config: dict, total_rows: int = None) -> str:
+    """Generate a natural language summary of query results using an LLM.
+    
+    Takes raw database results and formats them for LLM consumption, then
+    queries either OpenAI or Ollama to generate a concise summary that
+    directly answers the user's question.
+    
+    Args:
+        question: The original user question that prompted the query.
+        results: List of tuples containing the query result rows.
+        headers: List of column names corresponding to the results.
+        model_config: Dictionary containing LLM provider configuration with
+                     keys: 'provider' ('openai' or 'ollama'), 'model', and
+                     for OpenAI: 'api_key'.
+        total_rows: Optional total row count for pagination awareness.
+    
+    Returns:
+        A single sentence summary of the results.
+    
+    Raises:
+        ImportError: If required provider library is not installed.
+        KeyError: If required configuration keys are missing.
+    """
     if not results:
         return "The query returned no results."
 
@@ -47,6 +77,7 @@ One sentence answer:"""
 
     provider = model_config.get("provider", "ollama")
 
+    # Call appropriate LLM provider based on configuration
     if provider == "openai" and openai:
         client = openai.OpenAI(api_key=model_config["api_key"])
         response = client.chat.completions.create(

@@ -1,18 +1,51 @@
+"""
+Database connection management for DB Assistant.
 
+Provides connection handling for PostgreSQL, MySQL/MariaDB, and SQLite databases.
+Includes interactive setup wizard, credential management, and query execution.
+All connections are read-only where supported for safety.
+"""
+
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Database display names for user-friendly output
 DB_DISPLAY_NAMES = {
     "postgresql": "PostgreSQL",
     "mysql":      "MySQL / MariaDB",
     "sqlite":     "SQLite",
 }
 
+# Default ports for database types
 DB_DEFAULT_PORTS = {
     "postgresql": "5432",
     "mysql":      "3306",
 }
 
+# Supported database types
+SUPPORTED_TYPES = ("postgresql", "mysql", "sqlite")
+
+# System databases to filter out during discovery
+SYSTEM_DATABASES = {
+    "postgresql": {"postgres", "template0", "template1", "rdsadmin"},
+    "mysql":      {"information_schema", "mysql", "performance_schema", "sys"},
+    "sqlite":     set(),
+}
+
 
 def _input_field(label: str, default: str = "", secret: bool = False) -> str:
-    """Prompt for a single field with an optional default."""
+    """Prompt for a single field with an optional default.
+    
+    Args:
+        label: The field label to display to the user.
+        default: Default value if user enters nothing.
+        secret: Whether to hide input (for passwords).
+    
+    Returns:
+        User input or default value.
+    """
     import getpass
     if default:
         prompt = f"  {label} [{default}]: "
@@ -26,7 +59,11 @@ def _input_field(label: str, default: str = "", secret: bool = False) -> str:
 
 
 def _save_to_env(values: dict):
-    """Write connection details to .env file silently."""
+    """Write connection details to .env file, preserving existing values.
+    
+    Args:
+        values: Dictionary of key-value pairs to write to .env.
+    """
     env_path = ".env"
     # Read existing .env if present
     existing = {}
@@ -47,7 +84,11 @@ def _save_to_env(values: dict):
 
 
 def is_configured() -> bool:
-    """Check if .env has enough config to attempt a connection."""
+    """Check if .env has sufficient configuration to attempt a connection.
+    
+    Returns:
+        True if required connection parameters are present for the configured DB type.
+    """
     load_dotenv()
     db_type = os.getenv("DB_TYPE", "").lower()
     if db_type == "sqlite":
@@ -62,9 +103,16 @@ def is_configured() -> bool:
 
 
 def connection_wizard() -> tuple:
-    """
-    Interactive connection form shown on first run or failed connection.
-    Returns (conn, db_type).
+    """Interactive connection setup wizard for first run or failed connections.
+    
+    Guides user through database selection and credential input. Tests connection
+    and optionally saves credentials to .env file.
+    
+    Returns:
+        Tuple of (connection_object, database_type_string).
+    
+    Raises:
+        ConnectionError: If connection fails and user chooses not to retry.
     """
     print()
     print("  ┌─────────────────────────────────────────┐")
@@ -140,15 +188,16 @@ def connection_wizard() -> tuple:
         else:
             raise ConnectionError("Could not connect to database.") from e
 
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-
-SUPPORTED_TYPES = ("postgresql", "mysql", "sqlite")
-
 
 def get_db_type() -> str:
+    """Get the database type from environment configuration.
+    
+    Returns:
+        Database type string (postgresql, mysql, or sqlite).
+    
+    Raises:
+        ValueError: If DB_TYPE is not one of the supported types.
+    """
     db_type = os.getenv("DB_TYPE", "postgresql").lower().strip()
     if db_type not in SUPPORTED_TYPES:
         raise ValueError(f"Unsupported DB_TYPE '{db_type}'. Choose from: {SUPPORTED_TYPES}")
@@ -156,9 +205,13 @@ def get_db_type() -> str:
 
 
 def connect(db_type: str = None):
-    """
-    Returns (connection, db_type) for the configured database.
-    Connection is always read-only where supported.
+    """Establish a read-only connection to the configured database.
+    
+    Args:
+        db_type: Optional database type override. Uses DB_TYPE from env if not provided.
+    
+    Returns:
+        Tuple of (connection_object, database_type_string).
     """
     db_type = db_type or get_db_type()
 
@@ -173,6 +226,14 @@ def connect(db_type: str = None):
 
 
 def _connect_postgresql():
+    """Establish PostgreSQL connection with read-only session.
+    
+    Returns:
+        psycopg2 connection object.
+    
+    Raises:
+        ImportError: If psycopg2-binary is not installed.
+    """
     try:
         import psycopg2
     except ImportError:
@@ -190,6 +251,14 @@ def _connect_postgresql():
 
 
 def _connect_mysql():
+    """Establish MySQL connection.
+    
+    Returns:
+        mysql.connector connection object.
+    
+    Raises:
+        ImportError: If mysql-connector-python is not installed.
+    """
     try:
         import mysql.connector
     except ImportError:
@@ -206,6 +275,14 @@ def _connect_mysql():
 
 
 def _connect_sqlite():
+    """Establish SQLite connection with row factory for named access.
+    
+    Returns:
+        sqlite3 connection object.
+    
+    Raises:
+        ValueError: If DB_PATH is not set in environment.
+    """
     import sqlite3
     db_path = os.getenv("DB_PATH")
     if not db_path:
@@ -216,11 +293,16 @@ def _connect_sqlite():
 
 
 def reconnect(credentials: dict):
-    """
-    Re-establish a dropped connection using stored credentials.
-    credentials = { db_type, host, port, user, password, dbname }
-    Returns a fresh connection object, or raises on failure.
-    Called by core.py when OperationalError is caught mid-query.
+    """Re-establish a dropped connection using stored credentials.
+    
+    Used by core.py when OperationalError is caught mid-query.
+    
+    Args:
+        credentials: Dictionary containing connection parameters.
+            Expected keys: db_type, host, port, user, password, dbname.
+    
+    Returns:
+        Fresh connection object.
     """
     db_type = credentials.get("db_type", "postgresql").lower()
 
@@ -241,10 +323,16 @@ def reconnect(credentials: dict):
 
 
 def run_query(conn, sql: str, db_type: str, params: list = None) -> tuple[list, list]:
-    """
-    Execute a SELECT query and return (headers, rows).
-    Uses parameterized queries to prevent SQL injection.
-    Returns ([], []) if the query produces no column metadata (e.g. non-SELECT).
+    """Execute a SELECT query safely using parameterized queries.
+    
+    Args:
+        conn: Database connection object.
+        sql: SQL query string.
+        db_type: Database type for type-specific handling.
+        params: Optional parameters for parameterized query.
+    
+    Returns:
+        Tuple of (headers_list, rows_list). Returns empty lists for non-SELECT queries.
     """
     cursor = conn.cursor()
     if params:
@@ -258,6 +346,7 @@ def run_query(conn, sql: str, db_type: str, params: list = None) -> tuple[list, 
     rows = cursor.fetchall()
     headers = [desc[0] for desc in cursor.description]
 
+    # Convert SQLite Row objects to tuples for consistency
     if db_type == "sqlite":
         rows = [tuple(row) for row in rows]
 
@@ -265,28 +354,41 @@ def run_query(conn, sql: str, db_type: str, params: list = None) -> tuple[list, 
 
 
 def rollback(conn, db_type: str):
-    """Safe rollback — SQLite handles transactions differently."""
+    """Safely rollback transaction, handling SQLite's different transaction model.
+    
+    Args:
+        conn: Database connection object.
+        db_type: Database type to determine rollback behavior.
+    """
     try:
+        # SQLite handles transactions differently - don't attempt rollback
         if db_type != "sqlite":
             conn.rollback()
     except Exception:
+        # Silent fail on rollback errors
         pass
-
-
-# ── Web UI connection helpers (no .env required) ──────────────────
-
-SYSTEM_DATABASES = {
-    "postgresql": {"postgres", "template0", "template1", "rdsadmin"},
-    "mysql":      {"information_schema", "mysql", "performance_schema", "sys"},
-    "sqlite":     set(),
-}
 
 
 def connect_with_credentials(db_type: str, host: str, port: str,
                               dbname: str, user: str, password: str):
-    """
-    Connect using explicit credentials (not from .env).
-    Used by the web setup wizard. Returns a raw connection.
+    """Connect using explicit credentials (not from .env).
+    
+    Used by the web setup wizard. Includes connection timeouts for better UX.
+    
+    Args:
+        db_type: Database type (postgresql, mysql, sqlite).
+        host: Database host address.
+        port: Database port.
+        dbname: Database name.
+        user: Database username.
+        password: Database password.
+    
+    Returns:
+        Raw database connection object.
+    
+    Raises:
+        ImportError: If required database driver is not installed.
+        ValueError: If unsupported database type is specified.
     """
     db_type = db_type.lower()
     if db_type == "postgresql":
@@ -323,9 +425,20 @@ def connect_with_credentials(db_type: str, host: str, port: str,
 
 def discover_databases(db_type: str, host: str, port: str,
                        user: str, password: str) -> list[str]:
-    """
-    Connect to the database server and return a list of user-accessible
-    databases, filtering out known system databases.
+    """Discover user-accessible databases on the server, filtering system databases.
+    
+    Args:
+        db_type: Database type (postgresql, mysql, sqlite).
+        host: Database host address.
+        port: Database port.
+        user: Database username.
+        password: Database password.
+    
+    Returns:
+        List of database names available to the user.
+    
+    Raises:
+        ValueError: If unsupported database type is specified.
     """
     db_type = db_type.lower()
     system_dbs = SYSTEM_DATABASES.get(db_type, set())
@@ -347,7 +460,7 @@ def discover_databases(db_type: str, host: str, port: str,
         return [n for n in names if n not in system_dbs]
 
     elif db_type == "sqlite":
-        # SQLite has no concept of multiple databases — return the file path itself
+        # SQLite has no concept of multiple databases - return the file path itself
         return ["(current file)"]
 
     else:
@@ -356,10 +469,17 @@ def discover_databases(db_type: str, host: str, port: str,
 
 def save_credentials(db_type: str, host: str = "", port: str = "",
                      user: str = "", password: str = "", path: str = ""):
-    """
-    Persist server credentials (not the database name) to .env so
-    the setup wizard can pre-fill fields on next launch.
-    Database selection always happens in the UI.
+    """Persist server credentials to .env for pre-filling setup wizard fields.
+    
+    Database selection always happens in the UI, so only server credentials are saved.
+    
+    Args:
+        db_type: Database type (postgresql, mysql, sqlite).
+        host: Database host address.
+        port: Database port.
+        user: Database username.
+        password: Database password.
+        path: SQLite database file path.
     """
     values = {"DB_TYPE": db_type}
     if db_type == "sqlite":
@@ -375,9 +495,10 @@ def save_credentials(db_type: str, host: str = "", port: str = "",
 
 
 def load_saved_credentials() -> dict:
-    """
-    Return server credentials from .env for pre-filling the setup wizard.
-    Returns empty dict if nothing is saved.
+    """Load server credentials from .env for pre-filling setup wizard.
+    
+    Returns:
+        Dictionary of saved credentials, or empty dict if none exist.
     """
     load_dotenv(override=True)
     db_type = os.getenv("DB_TYPE", "").lower()

@@ -1,3 +1,10 @@
+"""
+Database schema extraction and formatting utilities.
+
+This module provides functions to connect to various database types (PostgreSQL, MySQL, SQLite)
+and retrieve their schema information, including tables, columns, data types, and foreign key relationships.
+It also supports adding custom descriptions for tables and columns, storing them in `schema_descriptions.json`.
+"""
 import json
 import os
 
@@ -5,12 +12,21 @@ DESCRIPTIONS_FILE = "schema_descriptions.json"
 
 
 def get_schema(conn, db_type: str = "postgresql") -> tuple[str, dict, dict, dict]:
-    """
+    """Retrieve database schema information for a given connection and database type.
+
+    Args:
+        conn: The database connection object (e.g., psycopg2, mysql.connector, sqlite3 connection).
+        db_type: The type of the database. Supported types are "postgresql", "mysql", and "sqlite".
+                 Defaults to "postgresql".
+
     Returns:
-      schema_text:  human-readable schema for LLM context
-      schema_map:   { table: [col1, col2, ...] }
-      schema_types: { table: { col: data_type } }
-      join_paths:   { dim_table: "fact.col = dim.col" } auto-discovered from FK constraints
+        tuple: A tuple containing:
+            - schema_text (str): A human-readable schema string, formatted for LLM context.
+            - schema_map (dict): A dictionary where keys are table names and values are lists of column names.
+            - schema_types (dict): A dictionary mapping table names to another dictionary, which maps
+              column names to their data types.
+            - join_paths (dict): A dictionary representing foreign key relationships, structured as
+              {source_table: {target_table: "source_table.col = target_table.col"}}.
     """
     descriptions = {}
     if os.path.exists(DESCRIPTIONS_FILE):
@@ -26,6 +42,16 @@ def get_schema(conn, db_type: str = "postgresql") -> tuple[str, dict, dict, dict
 
 
 def _get_schema_postgresql(conn, descriptions: dict) -> tuple[str, dict, dict]:
+    """Extract schema information specifically for a PostgreSQL database.
+
+    Args:
+        conn: The PostgreSQL database connection object.
+        descriptions: A dictionary of custom table and column descriptions.
+
+    Returns:
+        tuple: A tuple containing schema_text, schema_map, schema_types, and join_paths
+               specific to the PostgreSQL database.
+    """
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -73,10 +99,22 @@ def _get_schema_postgresql(conn, descriptions: dict) -> tuple[str, dict, dict]:
             join_paths.setdefault(table, {})[ref_table]     = condition
             join_paths.setdefault(ref_table, {})[table]     = condition
 
-    return "\n\n".join(schema_parts), schema_map, schema_types, join_paths
+    return "
+
+".join(schema_parts), schema_map, schema_types, join_paths
 
 
 def _get_schema_mysql(conn, descriptions: dict) -> tuple[str, dict, dict]:
+    """Extract schema information specifically for a MySQL database.
+
+    Args:
+        conn: The MySQL database connection object.
+        descriptions: A dictionary of custom table and column descriptions.
+
+    Returns:
+        tuple: A tuple containing schema_text, schema_map, schema_types, and join_paths
+               specific to the MySQL database.
+    """
     cursor = conn.cursor()
     db_name = conn.database
 
@@ -120,10 +158,22 @@ def _get_schema_mysql(conn, descriptions: dict) -> tuple[str, dict, dict]:
             join_paths.setdefault(table, {})[ref_table] = condition
             join_paths.setdefault(ref_table, {})[table] = condition
 
-    return "\n\n".join(schema_parts), schema_map, schema_types, join_paths
+    return "
+
+".join(schema_parts), schema_map, schema_types, join_paths
 
 
 def _get_schema_sqlite(conn, descriptions: dict) -> tuple[str, dict, dict]:
+    """Extract schema information specifically for an SQLite database.
+
+    Args:
+        conn: The SQLite database connection object.
+        descriptions: A dictionary of custom table and column descriptions.
+
+    Returns:
+        tuple: A tuple containing schema_text, schema_map, schema_types, and join_paths
+               specific to the SQLite database.
+    """
     cursor = conn.cursor()
 
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
@@ -155,14 +205,29 @@ def _get_schema_sqlite(conn, descriptions: dict) -> tuple[str, dict, dict]:
             join_paths.setdefault(table, {})[ref_table] = condition
             join_paths.setdefault(ref_table, {})[table] = condition
 
-    return "\n\n".join(schema_parts), schema_map, schema_types, join_paths
+    return "
+
+".join(schema_parts), schema_map, schema_types, join_paths
 
 
 def _format_table(table, columns, foreign_keys, row_count, descriptions) -> str:
+    """Format table and column details into a human-readable string.
+
+    Args:
+        table: The name of the table.
+        columns: A list of column information (name, type, nullable).
+        foreign_keys: A dictionary of foreign key relationships for the table.
+        row_count: The number of rows in the table.
+        descriptions: A dictionary of custom table and column descriptions.
+
+    Returns:
+        A formatted string representation of the table schema, including descriptions and FKs.
+    """
     table_desc = descriptions.get(table, {}).get("_description", "")
     header = f"Table: {table} (~{row_count:,} rows)"
     if table_desc:
-        header += f"\nDescription: {table_desc}"
+        header += f"
+Description: {table_desc}"
 
     col_lines = []
     for col_name, data_type, nullable in columns:
@@ -177,10 +242,26 @@ def _format_table(table, columns, foreign_keys, row_count, descriptions) -> str:
             line += f"  # {col_desc}"
         col_lines.append(line)
 
-    return f"{header}\nColumns:\n" + "\n".join(col_lines)
+    return f"{header}
+Columns:
+" + "
+".join(col_lines)
 
 
 def save_description(table: str, column: str, description: str):
+    """Save a custom description for a table or a specific column to the descriptions file.
+
+    This function updates the `schema_descriptions.json` file. If the column parameter is
+    an empty string, the description is applied to the table itself.
+
+    Args:
+        table: The name of the table to describe.
+        column: The name of the column to describe. Use an empty string for a table description.
+        description: The descriptive text to save.
+
+    Side Effects:
+        Writes the updated descriptions to the `schema_descriptions.json` file.
+    """
     descriptions = {}
     if os.path.exists(DESCRIPTIONS_FILE):
         with open(DESCRIPTIONS_FILE, "r") as f:
