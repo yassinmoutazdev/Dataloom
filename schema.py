@@ -41,7 +41,7 @@ def get_schema(conn, db_type: str = "postgresql") -> tuple[str, dict, dict, dict
         return _get_schema_postgresql(conn, descriptions)
 
 
-def _get_schema_postgresql(conn, descriptions: dict) -> tuple[str, dict, dict]:
+def _get_schema_postgresql(conn, descriptions: dict) -> tuple[str, dict, dict, dict]:
     """Extract schema information specifically for a PostgreSQL database.
 
     Args:
@@ -99,12 +99,10 @@ def _get_schema_postgresql(conn, descriptions: dict) -> tuple[str, dict, dict]:
             join_paths.setdefault(table, {})[ref_table]     = condition
             join_paths.setdefault(ref_table, {})[table]     = condition
 
-    return "
-
-".join(schema_parts), schema_map, schema_types, join_paths
+    return "\n\n".join(schema_parts), schema_map, schema_types, join_paths
 
 
-def _get_schema_mysql(conn, descriptions: dict) -> tuple[str, dict, dict]:
+def _get_schema_mysql(conn, descriptions: dict) -> tuple[str, dict, dict, dict]:
     """Extract schema information specifically for a MySQL database.
 
     Args:
@@ -158,12 +156,10 @@ def _get_schema_mysql(conn, descriptions: dict) -> tuple[str, dict, dict]:
             join_paths.setdefault(table, {})[ref_table] = condition
             join_paths.setdefault(ref_table, {})[table] = condition
 
-    return "
-
-".join(schema_parts), schema_map, schema_types, join_paths
+    return "\n\n".join(schema_parts), schema_map, schema_types, join_paths
 
 
-def _get_schema_sqlite(conn, descriptions: dict) -> tuple[str, dict, dict]:
+def _get_schema_sqlite(conn, descriptions: dict) -> tuple[str, dict, dict, dict]:
     """Extract schema information specifically for an SQLite database.
 
     Args:
@@ -205,9 +201,7 @@ def _get_schema_sqlite(conn, descriptions: dict) -> tuple[str, dict, dict]:
             join_paths.setdefault(table, {})[ref_table] = condition
             join_paths.setdefault(ref_table, {})[table] = condition
 
-    return "
-
-".join(schema_parts), schema_map, schema_types, join_paths
+    return "\n\n".join(schema_parts), schema_map, schema_types, join_paths
 
 
 def _format_table(table, columns, foreign_keys, row_count, descriptions) -> str:
@@ -226,8 +220,7 @@ def _format_table(table, columns, foreign_keys, row_count, descriptions) -> str:
     table_desc = descriptions.get(table, {}).get("_description", "")
     header = f"Table: {table} (~{row_count:,} rows)"
     if table_desc:
-        header += f"
-Description: {table_desc}"
+        header += f"\nDescription: {table_desc}"
 
     col_lines = []
     for col_name, data_type, nullable in columns:
@@ -242,10 +235,7 @@ Description: {table_desc}"
             line += f"  # {col_desc}"
         col_lines.append(line)
 
-    return f"{header}
-Columns:
-" + "
-".join(col_lines)
+    return f"{header}\nColumns:\n" + "\n".join(col_lines)
 
 
 def save_description(table: str, column: str, description: str):
