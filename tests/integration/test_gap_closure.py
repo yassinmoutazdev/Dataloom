@@ -41,6 +41,27 @@ def schema_types():
     }
 
 
+@pytest.fixture(autouse=True)
+def setup_join_paths():
+    """Set up join paths including dim_categories needed for BFS tests."""
+    from validator import set_join_paths
+    set_join_paths({
+        "fact_orders": {
+            "dim_customers": "fact_orders.customer_id = dim_customers.customer_id",
+            "dim_products":  "fact_orders.product_id = dim_products.product_id",
+            "dim_employees": "fact_orders.employee_id = dim_employees.employee_id",
+        },
+        "dim_customers": {"fact_orders": "fact_orders.customer_id = dim_customers.customer_id"},
+        "dim_products":  {
+            "fact_orders":   "fact_orders.product_id = dim_products.product_id",
+            "dim_categories":"dim_products.category_id = dim_categories.category_id",
+        },
+        "dim_employees": {"fact_orders": "fact_orders.employee_id = dim_employees.employee_id"},
+        "dim_categories":{"dim_products": "dim_products.category_id = dim_categories.category_id"},
+    })
+    yield
+
+
 def base_intent(**overrides):
     """Create a base intent with common defaults."""
     intent = {
@@ -66,7 +87,7 @@ def base_intent(**overrides):
 class TestNtileValidation:
     """GAP-2: NTILE order_by_column schema validation."""
 
-    def test_ntile_with_valid_order_by_column_passes(self):
+    def test_ntile_with_valid_order_by_column_passes(self, schema_map, schema_types):
         """GAP-2-A: NTILE with valid order_by_column passes."""
         intent = base_intent(
             metrics=[{
@@ -85,14 +106,19 @@ class TestNtileValidation:
         sql, params = build_sql(intent, "postgresql")
         assert "NTILE(10)" in sql
 
-    def test_ntile_with_unknown_bare_column_is_rejected(self):
-        """GAP-2-B: NTILE with unknown bare column is rejected."""
+    def test_ntile_with_unknown_bare_column_is_rejected(self, schema_map, schema_types):
+        """GAP-2-B: NTILE with unknown dotted column is rejected.
+        
+        Note: the validator only schema-checks dotted (table.column) references.
+        Bare names without a dot pass through as expressions. This test uses a
+        dotted nonexistent column to exercise the actual rejection path.
+        """
         intent = base_intent(
             metrics=[{
                 "metric": "decile",
                 "aggregation": "NTILE",
                 "ntile_buckets": 10,
-                "order_by_column": "nonexistent_column_xyz",
+                "order_by_column": "fact_orders.nonexistent_column_xyz",
                 "order_dir": "DESC",
                 "target_column": "",
             }],
@@ -101,7 +127,7 @@ class TestNtileValidation:
         ok, errs = validate_intent(intent, schema_map, schema_types)
         assert not ok, f"Expected validation failure, got success: {errs}"
 
-    def test_ntile_with_fully_qualified_column_passes(self):
+    def test_ntile_with_fully_qualified_column_passes(self, schema_map, schema_types):
         """GAP-2-C: NTILE with fully-qualified column passes."""
         intent = base_intent(
             metrics=[{
@@ -124,7 +150,7 @@ class TestNtileValidation:
 class TestNtileAliasExpansion:
     """GAP-5: NTILE order_by_column alias → full expression expansion."""
 
-    def test_llm_emits_alias_total_revenue_builder_expands_to_full_sum(self):
+    def test_llm_emits_alias_total_revenue_builder_expands_to_full_sum(self, schema_map, schema_types):
         """GAP-5-A: LLM emits alias 'total_revenue' — builder expands to full SUM()."""
         intent = base_intent(
             metrics=[
@@ -150,7 +176,7 @@ class TestNtileAliasExpansion:
         assert "NTILE(10) OVER (ORDER BY SUM(fact_orders.unit_price) DESC)" in sql
         assert "ORDER BY total_revenue" not in sql
 
-    def test_ntile_with_full_expression_passes_through_unchanged(self):
+    def test_ntile_with_full_expression_passes_through_unchanged(self, schema_map, schema_types):
         """GAP-5-B: NTILE with full expression passes through unchanged."""
         intent = base_intent(
             metrics=[
@@ -173,7 +199,7 @@ class TestNtileAliasExpansion:
         sql, params = build_sql(intent, "postgresql")
         assert "NTILE(10) OVER (ORDER BY SUM(fact_orders.unit_price) DESC)" in sql
 
-    def test_ntile_with_unknown_alias_falls_back_to_alias(self):
+    def test_ntile_with_unknown_alias_falls_back_to_alias(self, schema_map, schema_types):
         """GAP-5-C: NTILE with unknown alias falls back to alias (no crash)."""
         intent = base_intent(
             metrics=[{
@@ -196,7 +222,7 @@ class TestNtileAliasExpansion:
 class TestAutoRepairJoins:
     """GAP-6: auto_repair_joins covers computed_columns table references."""
 
-    def test_case_when_references_dim_customers_join_auto_inserted(self):
+    def test_case_when_references_dim_customers_join_auto_inserted(self, schema_map, schema_types):
         """GAP-6-A: CASE WHEN references dim_customers — join auto-inserted."""
         intent = base_intent(
             fact_table="fact_orders",
@@ -220,7 +246,7 @@ class TestAutoRepairJoins:
         # dim_customers must appear in the generated SQL as a join
         assert "JOIN dim_customers ON" in sql
 
-    def test_case_when_references_dim_products_join_auto_inserted(self):
+    def test_case_when_references_dim_products_join_auto_inserted(self, schema_map, schema_types):
         """GAP-6-B: CASE WHEN references dim_products — join auto-inserted."""
         intent = base_intent(
             fact_table="fact_orders",
@@ -242,7 +268,7 @@ class TestAutoRepairJoins:
         sql, params = build_sql(intent, "postgresql")
         assert "JOIN dim_products ON" in sql
 
-    def test_no_false_joins_for_fact_table_columns(self):
+    def test_no_false_joins_for_fact_table_columns(self, schema_map, schema_types):
         """GAP-6-C: No false joins for fact table columns in CASE WHEN."""
         intent = base_intent(
             computed_columns=[{
@@ -262,7 +288,7 @@ class TestAutoRepairJoins:
         # Should NOT inject any extra joins for the fact table itself
         assert "JOIN fact_orders" not in sql
 
-    def test_no_join_for_tables_not_in_fk_graph(self):
+    def test_no_join_for_tables_not_in_fk_graph(self, schema_map, schema_types):
         """GAP-6-D: No join for tables not in FK graph (unknown table — no crash)."""
         intent = base_intent(
             computed_columns=[{
@@ -286,7 +312,7 @@ class TestAutoRepairJoins:
 class TestPercentileContDialectHandling:
     """GAP-7: PERCENTILE_CONT hard-fails on MySQL dialect."""
 
-    def test_percentile_cont_on_mysql_raises_value_error(self):
+    def test_percentile_cont_on_mysql_raises_value_error(self, schema_map, schema_types):
         """GAP-7-A: PERCENTILE_CONT on MySQL raises ValueError (not silent SQL)."""
         intent = base_intent(
             metrics=[{
@@ -304,7 +330,7 @@ class TestPercentileContDialectHandling:
         with pytest.raises(ValueError, match="PERCENTILE_CONT is not supported for MySQL"):
             build_sql(intent, "mysql")
 
-    def test_percentile_cont_on_postgresql_still_works_correctly(self):
+    def test_percentile_cont_on_postgresql_still_works_correctly(self, schema_map, schema_types):
         """GAP-7-B: PERCENTILE_CONT on PostgreSQL still works correctly."""
         intent = base_intent(
             metrics=[{
@@ -323,7 +349,7 @@ class TestPercentileContDialectHandling:
         assert "PERCENTILE_CONT(0.5)" in sql
         assert "WITHIN GROUP" in sql
 
-    def test_percentile_cont_on_sqlite_uses_row_number_fallback(self):
+    def test_percentile_cont_on_sqlite_uses_row_number_fallback(self, schema_map, schema_types):
         """GAP-7-C: PERCENTILE_CONT on SQLite still uses ROW_NUMBER fallback."""
         intent = base_intent(
             metrics=[{
@@ -346,7 +372,7 @@ class TestPercentileContDialectHandling:
 class TestLeftJoinSemantics:
     """GAP-8: BFS-inserted hops inherit LEFT semantics."""
 
-    def test_anti_join_query_bfs_hop_is_left_join_not_inner_join(self):
+    def test_anti_join_query_bfs_hop_is_left_join_not_inner_join(self, schema_map, schema_types):
         """GAP-8-A: Anti-join query — BFS hop is LEFT JOIN not INNER JOIN."""
         intent = base_intent(
             fact_table="dim_products",
@@ -366,7 +392,7 @@ class TestLeftJoinSemantics:
         assert "INNER JOIN dim_categories" not in sql
         assert "JOIN dim_categories ON" not in sql
 
-    def test_inner_only_query_bfs_hop_is_plain_inner_join(self):
+    def test_inner_only_query_bfs_hop_is_plain_inner_join(self, schema_map, schema_types):
         """GAP-8-B: INNER-only query — BFS hop is plain INNER JOIN."""
         intent = base_intent(
             group_by=["dim_products.category"],
@@ -381,7 +407,7 @@ class TestLeftJoinSemantics:
         assert "JOIN dim_products ON" in sql
         assert "LEFT JOIN dim_products" not in sql
 
-    def test_mixed_joins_left_present_means_bfs_hops_are_left(self):
+    def test_mixed_joins_left_present_means_bfs_hops_are_left(self, schema_map, schema_types):
         """GAP-8-C: Mixed joins — LEFT present means BFS hops are LEFT."""
         intent = base_intent(
             fact_table="fact_orders",

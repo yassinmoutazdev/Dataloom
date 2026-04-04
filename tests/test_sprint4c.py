@@ -305,7 +305,7 @@ class TestRemainingPatterns:
 
     # W10 — Date interval filter value
     def test_w10_interval_filter_postgresql(self):
-        q = sql({
+        intent = {
             "metrics": [{"metric":"cnt","aggregation":"COUNT","target_column":"order_id"}],
             "fact_table": "fact_orders", "group_by": [],
             "filters": [{
@@ -313,8 +313,10 @@ class TestRemainingPatterns:
                 "operator": "<=",
                 "value": "order_date + INTERVAL '7 days'"
             }],
-        }, db="postgresql")
-        q, params = build_sql(intent, db)
+        }
+        ok, errs = validate_intent(intent, SCHEMA)
+        assert ok, errs
+        q, params = build_sql(intent, "postgresql")
         assert any("INTERVAL" in str(p) for p in params) or "INTERVAL" in q
 
     def test_w10_interval_filter_mysql(self):
