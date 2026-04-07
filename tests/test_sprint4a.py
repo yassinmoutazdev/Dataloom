@@ -10,50 +10,50 @@
 #   4A-6  Standalone HAVING COUNT DISTINCT
 #   4A-7  computed_columns[] CASE WHEN
 #
-#   S1-S5 Official 5-question smoke test (per audit plan)
-#   R     Sprint 1+2+3 regression battery
-#   D     Dialect compatibility matrix per new feature
-#   X     Cross-feature compound queries (≥3 patterns in one intent)
+#   SMOKE  Official 5-question smoke test (per audit plan)
+#   REGRESSION  Sprint 1+2+3 regression battery
+#   CROSS  Cross-feature compound queries (≥3 patterns in one intent)
+#   DIALECT  Dialect compatibility matrix per new feature
 # =============================================================================
 
-import copy, sys, traceback
+import copy
+import pytest
 from validator import set_join_paths, validate_intent
-from sql_builder   import build_sql
+from sql_builder import build_sql
 
-PASS = 0
-FAIL = 0
-ERRORS = []
+# ─── Schema ───────────────────────────────────────────────────────────────────
 
-# ─── Schema used for all tests ────────────────────────────────────────────────
 SCHEMA_MAP = {
     "fact_orders": [
-        "order_id","customer_id","product_id","employee_id","campaign_id",
-        "order_date","ship_date","quantity","unit_price","freight","status","region",
-        "group_label",
+        "order_id", "customer_id", "product_id", "employee_id", "campaign_id",
+        "order_date", "ship_date", "quantity", "unit_price", "freight",
+        "status", "region", "group_label",
     ],
     "dim_customers": [
-        "customer_id","name","email","city","country","age",
-        "signup_date","is_member","member_since",
+        "customer_id", "name", "email", "city", "country", "age",
+        "signup_date", "is_member", "member_since",
     ],
     "dim_products": [
-        "product_id","product_name","category","subcategory",
-        "cost","price","stock_level","supplier_id",
+        "product_id", "product_name", "category", "subcategory",
+        "cost", "price", "stock_level", "supplier_id",
     ],
-    "dim_employees": ["employee_id","name","department","region","hire_date","role"],
-    "dim_campaigns": ["campaign_id","source","clicks","conversions","month"],
+    "dim_employees": ["employee_id", "name", "department", "region", "hire_date", "role"],
+    "dim_campaigns": ["campaign_id", "source", "clicks", "conversions", "month"],
 }
+
 SCHEMA_TYPES = {
     "fact_orders": {
-        "order_id":"varchar","customer_id":"varchar","product_id":"varchar",
-        "employee_id":"varchar","campaign_id":"varchar",
-        "quantity":"integer","unit_price":"numeric","freight":"numeric",
-        "order_date":"timestamp","ship_date":"timestamp",
+        "order_id": "varchar", "customer_id": "varchar", "product_id": "varchar",
+        "employee_id": "varchar", "campaign_id": "varchar",
+        "quantity": "integer", "unit_price": "numeric", "freight": "numeric",
+        "order_date": "timestamp", "ship_date": "timestamp",
     },
     "dim_products": {
-        "price":"numeric","cost":"numeric","stock_level":"integer",
+        "price": "numeric", "cost": "numeric", "stock_level": "integer",
     },
 }
-set_join_paths({
+
+_JOIN_PATHS = {
     "fact_orders": {
         "dim_customers": "fact_orders.customer_id = dim_customers.customer_id",
         "dim_products":  "fact_orders.product_id  = dim_products.product_id",
@@ -64,1045 +64,864 @@ set_join_paths({
     "dim_products":  {"fact_orders": "fact_orders.product_id  = dim_products.product_id"},
     "dim_employees": {"fact_orders": "fact_orders.employee_id = dim_employees.employee_id"},
     "dim_campaigns": {"fact_orders": "fact_orders.campaign_id = dim_campaigns.campaign_id"},
-})
+}
+
+
+@pytest.fixture(autouse=True)
+def setup_joins():
+    set_join_paths(_JOIN_PATHS)
+
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
+
 def base_intent(**overrides):
     i = {
-        "metrics":         [{"metric":"total_revenue","aggregation":"SUM","target_column":"unit_price","distinct":False}],
-        "fact_table":      "fact_orders",
-        "group_by":        [],
-        "joins":           [],
-        "filters":         [],
-        "computed_columns":[],
-        "time_filter":     None,
-        "time_bucket":     None,
+        "metrics":          [{"metric": "total_revenue", "aggregation": "SUM",
+                              "target_column": "unit_price", "distinct": False}],
+        "fact_table":       "fact_orders",
+        "group_by":         [],
+        "joins":            [],
+        "filters":          [],
+        "computed_columns": [],
+        "time_filter":      None,
+        "time_bucket":      None,
         "time_bucket_column": None,
-        "having":          [],
-        "limit":           10,
-        "order_by":        None,
-        "order_dir":       "DESC",
+        "having":           [],
+        "limit":            10,
+        "order_by":         None,
+        "order_dir":        "DESC",
     }
     i.update(overrides)
     return i
 
-def run(label, intent_raw, db_type="postgresql",
-        must_contain=None, must_not_contain=None,
-        expect_fail=False, check_params=None):
-    global PASS, FAIL
+
+def run_valid(intent_raw, db_type="postgresql"):
+    """Validate and build SQL. Asserts validation passes. Returns (sql, params)."""
     intent = copy.deepcopy(intent_raw)
-    try:
-        ok, errs = validate_intent(intent, SCHEMA_MAP, SCHEMA_TYPES)
-        if expect_fail:
-            if ok:
-                FAIL += 1
-                ERRORS.append(f"[FAIL] {label}: expected validation failure, got success")
-                return
-            else:
-                PASS += 1
-                print(f"  ✓  {label}  [expected reject: {errs[0][:60]}]")
-                return
-        if not ok:
-            FAIL += 1
-            ERRORS.append(f"[FAIL] {label}: validate_intent failed → {errs}")
-            return
-        sql, params = build_sql(intent, db_type)
-        for needle in (must_contain or []):
-            if needle.upper() not in sql.upper():
-                FAIL += 1
-                ERRORS.append(f"[FAIL] {label}: SQL missing '{needle}'\nSQL:\n{sql}")
-                return
-        for needle in (must_not_contain or []):
-            if needle.upper() in sql.upper():
-                FAIL += 1
-                ERRORS.append(f"[FAIL] {label}: SQL should NOT contain '{needle}'\nSQL:\n{sql}")
-                return
-        if check_params is not None:
-            if params != check_params:
-                FAIL += 1
-                ERRORS.append(f"[FAIL] {label}: params mismatch. Expected {check_params}, got {params}")
-                return
-        PASS += 1
-        print(f"  ✓  {label}")
-    except Exception as e:
-        FAIL += 1
-        ERRORS.append(f"[FAIL] {label}: Exception — {e}\n{traceback.format_exc()}")
+    ok, errs = validate_intent(intent, SCHEMA_MAP, SCHEMA_TYPES)
+    assert ok, f"validate_intent failed: {errs}"
+    sql, params = build_sql(intent, db_type)
+    return sql, params
 
 
-def section(title):
-    print(f"\n{'─'*66}")
-    print(f"  {title}")
-    print(f"{'─'*66}")
+def run_invalid(intent_raw):
+    """Validate and assert that validation fails. Returns errors list."""
+    intent = copy.deepcopy(intent_raw)
+    ok, errs = validate_intent(intent, SCHEMA_MAP, SCHEMA_TYPES)
+    assert not ok, "Expected validation failure but got success"
+    return errs
+
+
+def assert_sql_contains(sql, *needles):
+    sql_upper = sql.upper()
+    for needle in needles:
+        assert needle.upper() in sql_upper, f"SQL missing '{needle}':\n{sql}"
+
+
+def assert_sql_not_contains(sql, *needles):
+    sql_upper = sql.upper()
+    for needle in needles:
+        assert needle.upper() not in sql_upper, f"SQL should NOT contain '{needle}':\n{sql}"
 
 
 # =============================================================================
 # SECTION 4A-1: IS NULL / IS NOT NULL
 # =============================================================================
-section("4A-1 · IS NULL / IS NOT NULL operator")
 
-run("4A-1-A: IS NULL on email (E9 smoke)",
-    base_intent(
-        fact_table="dim_customers",
-        metrics=[{"metric":"cust_count","aggregation":"COUNT","target_column":"customer_id","distinct":False}],
-        filters=[{"column":"email","operator":"IS NULL"}],
-        joins=[],
-    ),
-    must_contain=["IS NULL"],
-    check_params=[],
-)
+class TestISNull:
 
-run("4A-1-B: IS NOT NULL on email",
-    base_intent(
-        fact_table="dim_customers",
-        metrics=[{"metric":"cust_count","aggregation":"COUNT","target_column":"customer_id","distinct":False}],
-        filters=[{"column":"email","operator":"IS NOT NULL"}],
-        joins=[],
-    ),
-    must_contain=["IS NOT NULL"],
-    check_params=[],
-)
+    def test_is_null_on_email(self):
+        sql, params = run_valid(base_intent(
+            fact_table="dim_customers",
+            metrics=[{"metric": "cust_count", "aggregation": "COUNT",
+                      "target_column": "customer_id", "distinct": False}],
+            filters=[{"column": "email", "operator": "IS NULL"}],
+            joins=[],
+        ))
+        assert_sql_contains(sql, "IS NULL")
+        assert params == []
 
-run("4A-1-C: IS NULL combined with value filter",
-    base_intent(
-        filters=[
-            {"column":"email","operator":"IS NULL"},
-            {"column":"status","operator":"=","value":"pending"},
-        ],
-    ),
-    must_contain=["IS NULL", "%s"],
-    check_params=["pending"],
-)
+    def test_is_not_null_on_email(self):
+        sql, params = run_valid(base_intent(
+            fact_table="dim_customers",
+            metrics=[{"metric": "cust_count", "aggregation": "COUNT",
+                      "target_column": "customer_id", "distinct": False}],
+            filters=[{"column": "email", "operator": "IS NOT NULL"}],
+            joins=[],
+        ))
+        assert_sql_contains(sql, "IS NOT NULL")
+        assert params == []
 
-run("4A-1-D: IS NULL on cross-table column with JOIN",
-    base_intent(
-        fact_table="dim_customers",
-        metrics=[{"metric":"cust_count","aggregation":"COUNT","target_column":"customer_id","distinct":False}],
-        filters=[{"column":"dim_customers.email","operator":"IS NULL"}],
-        joins=[],
-    ),
-    must_contain=["IS NULL"],
-)
+    def test_is_null_combined_with_value_filter(self):
+        sql, params = run_valid(base_intent(
+            filters=[
+                {"column": "email", "operator": "IS NULL"},
+                {"column": "status", "operator": "=", "value": "pending"},
+            ],
+        ))
+        assert_sql_contains(sql, "IS NULL", "%s")
+        assert params == ["pending"]
 
-run("4A-1-E: Invalid operator (reject)",
-    base_intent(filters=[{"column":"email","operator":"IS MISSING","value":None}]),
-    expect_fail=True,
-)
+    def test_is_null_on_qualified_column(self):
+        sql, _ = run_valid(base_intent(
+            fact_table="dim_customers",
+            metrics=[{"metric": "cust_count", "aggregation": "COUNT",
+                      "target_column": "customer_id", "distinct": False}],
+            filters=[{"column": "dim_customers.email", "operator": "IS NULL"}],
+            joins=[],
+        ))
+        assert_sql_contains(sql, "IS NULL")
 
-run("4A-1-F: SQLite — IS NULL produces correct parameterless fragment",
-    base_intent(
-        fact_table="dim_customers",
-        metrics=[{"metric":"cust_count","aggregation":"COUNT","target_column":"customer_id","distinct":False}],
-        filters=[{"column":"email","operator":"IS NULL"}],
-    ),
-    db_type="sqlite",
-    must_contain=["IS NULL"],
-    check_params=[],
-)
+    def test_invalid_null_operator_rejected(self):
+        run_invalid(base_intent(
+            filters=[{"column": "email", "operator": "IS MISSING", "value": None}]
+        ))
+
+    def test_is_null_sqlite_parameterless(self):
+        sql, params = run_valid(base_intent(
+            fact_table="dim_customers",
+            metrics=[{"metric": "cust_count", "aggregation": "COUNT",
+                      "target_column": "customer_id", "distinct": False}],
+            filters=[{"column": "email", "operator": "IS NULL"}],
+        ), db_type="sqlite")
+        assert_sql_contains(sql, "IS NULL")
+        assert params == []
 
 
 # =============================================================================
 # SECTION 4A-2: Typed JOINs / Anti-Join
 # =============================================================================
-section("4A-2 · LEFT JOIN / Anti-Join (I2 and A8 patterns)")
 
-run("4A-2-A: LEFT JOIN renders LEFT JOIN keyword",
-    base_intent(
-        fact_table="dim_products",
-        metrics=[{"metric":"product_count","aggregation":"COUNT","target_column":"product_id","distinct":False}],
-        group_by=["dim_products.product_name"],
-        joins=[{"type":"LEFT","condition":"dim_products.product_id = fact_orders.product_id"}],
-        filters=[{"column":"fact_orders.product_id","operator":"IS NULL"}],
-    ),
-    must_contain=["LEFT JOIN", "IS NULL"],
-)
+class TestTypedJoins:
 
-run("4A-2-B: INNER JOIN string stays as plain JOIN",
-    base_intent(
-        joins=["fact_orders.product_id = dim_products.product_id"],
-        group_by=["dim_products.category"],
-    ),
-    must_contain=["JOIN dim_products"],
-    must_not_contain=["LEFT JOIN", "RIGHT JOIN"],
-)
+    def test_left_join_renders_keyword(self):
+        sql, _ = run_valid(base_intent(
+            fact_table="dim_products",
+            metrics=[{"metric": "product_count", "aggregation": "COUNT",
+                      "target_column": "product_id", "distinct": False}],
+            group_by=["dim_products.product_name"],
+            joins=[{"type": "LEFT", "condition": "dim_products.product_id = fact_orders.product_id"}],
+            filters=[{"column": "fact_orders.product_id", "operator": "IS NULL"}],
+        ))
+        assert_sql_contains(sql, "LEFT JOIN", "IS NULL")
 
-run("4A-2-C: Anti-join: products never ordered (I2)",
-    base_intent(
-        fact_table="dim_products",
-        metrics=[{"metric":"unordered_count","aggregation":"COUNT","target_column":"product_id","distinct":False}],
-        group_by=["dim_products.product_name"],
-        joins=[{"type":"LEFT","condition":"dim_products.product_id = fact_orders.product_id"}],
-        filters=[{"column":"fact_orders.product_id","operator":"IS NULL"}],
-    ),
-    must_contain=["LEFT JOIN", "IS NULL"],
-)
+    def test_inner_join_string_stays_plain(self):
+        sql, _ = run_valid(base_intent(
+            joins=["fact_orders.product_id = dim_products.product_id"],
+            group_by=["dim_products.category"],
+        ))
+        assert_sql_contains(sql, "JOIN dim_products")
+        assert_sql_not_contains(sql, "LEFT JOIN", "RIGHT JOIN")
 
-run("4A-2-D: Anti-join: churned customers (A8 pattern)",
-    base_intent(
-        fact_table="dim_customers",
-        metrics=[{"metric":"churn_count","aggregation":"COUNT","target_column":"customer_id","distinct":False}],
-        group_by=["dim_customers.name"],
-        joins=[{"type":"LEFT","condition":"dim_customers.customer_id = fact_orders.customer_id"}],
-        filters=[{"column":"fact_orders.customer_id","operator":"IS NULL"}],
-    ),
-    must_contain=["LEFT JOIN", "fact_orders.customer_id IS NULL"],
-)
+    def test_anti_join_products_never_ordered(self):
+        sql, _ = run_valid(base_intent(
+            fact_table="dim_products",
+            metrics=[{"metric": "unordered_count", "aggregation": "COUNT",
+                      "target_column": "product_id", "distinct": False}],
+            group_by=["dim_products.product_name"],
+            joins=[{"type": "LEFT", "condition": "dim_products.product_id = fact_orders.product_id"}],
+            filters=[{"column": "fact_orders.product_id", "operator": "IS NULL"}],
+        ))
+        assert_sql_contains(sql, "LEFT JOIN", "IS NULL")
 
-run("4A-2-E: RIGHT JOIN keyword renders correctly",
-    base_intent(
-        fact_table="dim_products",
-        metrics=[{"metric":"cnt","aggregation":"COUNT","target_column":"product_id","distinct":False}],
-        joins=[{"type":"RIGHT","condition":"dim_products.product_id = fact_orders.product_id"}],
-    ),
-    must_contain=["RIGHT JOIN"],
-)
+    def test_anti_join_churned_customers(self):
+        sql, _ = run_valid(base_intent(
+            fact_table="dim_customers",
+            metrics=[{"metric": "churn_count", "aggregation": "COUNT",
+                      "target_column": "customer_id", "distinct": False}],
+            group_by=["dim_customers.name"],
+            joins=[{"type": "LEFT", "condition": "dim_customers.customer_id = fact_orders.customer_id"}],
+            filters=[{"column": "fact_orders.customer_id", "operator": "IS NULL"}],
+        ))
+        assert_sql_contains(sql, "LEFT JOIN", "fact_orders.customer_id IS NULL")
 
-run("4A-2-F: Mixed typed + plain joins in same query",
-    base_intent(
-        group_by=["dim_products.category","dim_employees.department"],
-        joins=[
-            "fact_orders.product_id = dim_products.product_id",
-            {"type":"LEFT","condition":"fact_orders.employee_id = dim_employees.employee_id"},
-        ],
-    ),
-    must_contain=["JOIN dim_products ON", "LEFT JOIN dim_employees ON"],
-)
+    def test_right_join_keyword_renders(self):
+        sql, _ = run_valid(base_intent(
+            fact_table="dim_products",
+            metrics=[{"metric": "cnt", "aggregation": "COUNT",
+                      "target_column": "product_id", "distinct": False}],
+            joins=[{"type": "RIGHT", "condition": "dim_products.product_id = fact_orders.product_id"}],
+        ))
+        assert_sql_contains(sql, "RIGHT JOIN")
+
+    def test_mixed_typed_and_plain_joins(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["dim_products.category", "dim_employees.department"],
+            joins=[
+                "fact_orders.product_id = dim_products.product_id",
+                {"type": "LEFT", "condition": "fact_orders.employee_id = dim_employees.employee_id"},
+            ],
+        ))
+        assert_sql_contains(sql, "JOIN dim_products ON", "LEFT JOIN dim_employees ON")
 
 
 # =============================================================================
 # SECTION 4A-3: EXTRACT / Date-Part Expressions in group_by
 # =============================================================================
-section("4A-3 · EXTRACT date-part expressions in group_by")
 
-run("4A-3-A: EXTRACT month in group_by — PostgreSQL",
-    base_intent(
-        group_by=["EXTRACT(month FROM fact_orders.order_date) AS order_month"],
-    ),
-    must_contain=["EXTRACT(month FROM fact_orders.order_date)"],
-)
+class TestExtractExpressions:
 
-run("4A-3-B: EXTRACT DOW in group_by — weekend/weekday (I9 pattern)",
-    base_intent(
-        group_by=["EXTRACT(dow FROM fact_orders.order_date) AS day_of_week"],
-    ),
-    must_contain=["EXTRACT(dow FROM"],
-)
+    def test_extract_month_postgresql(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["EXTRACT(month FROM fact_orders.order_date) AS order_month"],
+        ))
+        assert_sql_contains(sql, "EXTRACT(month FROM fact_orders.order_date)")
 
-run("4A-3-C: EXTRACT year MySQL emits YEAR()",
-    base_intent(
-        group_by=["YEAR(fact_orders.order_date) AS order_year"],
-    ),
-    db_type="mysql",
-    must_contain=["YEAR("],
-)
+    def test_extract_dow_for_weekend_weekday(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["EXTRACT(dow FROM fact_orders.order_date) AS day_of_week"],
+        ))
+        assert_sql_contains(sql, "EXTRACT(dow FROM")
 
-run("4A-3-D: EXTRACT in group_by also appears in GROUP BY clause",
-    base_intent(
-        group_by=["EXTRACT(month FROM fact_orders.order_date) AS order_month"],
-    ),
-    must_contain=["GROUP BY"],
-)
+    def test_extract_year_mysql_emits_year_function(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["YEAR(fact_orders.order_date) AS order_year"],
+        ), db_type="mysql")
+        assert_sql_contains(sql, "YEAR(")
 
-run("4A-3-E: SQLite strftime expression passes through",
-    base_intent(
-        group_by=["CAST(strftime('%m', fact_orders.order_date) AS INTEGER) AS order_month"],
-    ),
-    db_type="sqlite",
-    must_contain=["strftime"],
-)
+    def test_extract_in_group_by_clause(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["EXTRACT(month FROM fact_orders.order_date) AS order_month"],
+        ))
+        assert_sql_contains(sql, "GROUP BY")
 
-run("4A-3-F: EXTRACT is NOT schema-validated (no false errors)",
-    base_intent(
-        group_by=["EXTRACT(quarter FROM fact_orders.order_date) AS qtr"],
-    ),
-    must_contain=["EXTRACT"],
-)
+    def test_sqlite_strftime_passes_through(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["CAST(strftime('%m', fact_orders.order_date) AS INTEGER) AS order_month"],
+        ), db_type="sqlite")
+        assert_sql_contains(sql, "strftime")
+
+    def test_extract_bypasses_schema_validation(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["EXTRACT(quarter FROM fact_orders.order_date) AS qtr"],
+        ))
+        assert_sql_contains(sql, "EXTRACT")
 
 
 # =============================================================================
 # SECTION 4A-4: Date-Arithmetic Metrics
 # =============================================================================
-section("4A-4 · Date-arithmetic expressions (A2, A5, W10 patterns)")
 
-run("4A-4-A: AVG diff_days PostgreSQL (A2 pattern — avg shipping delay)",
-    base_intent(
-        metrics=[{
-            "metric":"avg_delay_days",
-            "aggregation":"AVG",
-            "target_column":"ship_date - order_date",
-            "is_expression": True,
-            "date_arithmetic":{
-                "operation":"diff_days",
-                "col_a":"ship_date",
-                "col_b":"order_date",
-            },
-        }],
-    ),
-    must_contain=["AVG(", "86400", "epoch"],
-)
+class TestDateArithmetic:
 
-run("4A-4-B: AVG diff_days MySQL emits TIMESTAMPDIFF",
-    base_intent(
-        metrics=[{
-            "metric":"avg_delay_days",
-            "aggregation":"AVG",
-            "target_column":"",
-            "is_expression": True,
-            "date_arithmetic":{"operation":"diff_days","col_a":"ship_date","col_b":"order_date"},
-        }],
-    ),
-    db_type="mysql",
-    must_contain=["TIMESTAMPDIFF", "86400"],
-)
+    def test_avg_diff_days_postgresql_uses_epoch(self):
+        sql, _ = run_valid(base_intent(
+            metrics=[{
+                "metric": "avg_delay_days", "aggregation": "AVG",
+                "target_column": "ship_date - order_date", "is_expression": True,
+                "date_arithmetic": {"operation": "diff_days", "col_a": "ship_date", "col_b": "order_date"},
+            }],
+        ))
+        assert_sql_contains(sql, "AVG(", "86400", "epoch")
 
-run("4A-4-C: AVG diff_days SQLite emits julianday",
-    base_intent(
-        metrics=[{
-            "metric":"avg_delay_days",
-            "aggregation":"AVG",
-            "target_column":"",
-            "is_expression": True,
-            "date_arithmetic":{"operation":"diff_days","col_a":"ship_date","col_b":"order_date"},
-        }],
-    ),
-    db_type="sqlite",
-    must_contain=["julianday"],
-)
+    def test_avg_diff_days_mysql_uses_timestampdiff(self):
+        sql, _ = run_valid(base_intent(
+            metrics=[{
+                "metric": "avg_delay_days", "aggregation": "AVG",
+                "target_column": "", "is_expression": True,
+                "date_arithmetic": {"operation": "diff_days", "col_a": "ship_date", "col_b": "order_date"},
+            }],
+        ), db_type="mysql")
+        assert_sql_contains(sql, "TIMESTAMPDIFF", "86400")
 
-run("4A-4-D: diff_hours operation",
-    base_intent(
-        metrics=[{
-            "metric":"avg_delay_hours",
-            "aggregation":"AVG",
-            "target_column":"",
-            "is_expression": True,
-            "date_arithmetic":{"operation":"diff_hours","col_a":"ship_date","col_b":"order_date"},
-        }],
-    ),
-    must_contain=["3600"],
-)
+    def test_avg_diff_days_sqlite_uses_julianday(self):
+        sql, _ = run_valid(base_intent(
+            metrics=[{
+                "metric": "avg_delay_days", "aggregation": "AVG",
+                "target_column": "", "is_expression": True,
+                "date_arithmetic": {"operation": "diff_days", "col_a": "ship_date", "col_b": "order_date"},
+            }],
+        ), db_type="sqlite")
+        assert_sql_contains(sql, "julianday")
 
-run("4A-4-E: diff_seconds operation SQLite",
-    base_intent(
-        metrics=[{
-            "metric":"delay_secs",
-            "aggregation":"AVG",
-            "target_column":"",
-            "is_expression": True,
-            "date_arithmetic":{"operation":"diff_seconds","col_a":"ship_date","col_b":"order_date"},
-        }],
-    ),
-    db_type="sqlite",
-    must_contain=["86400", "julianday"],
-)
+    def test_diff_hours_operation(self):
+        sql, _ = run_valid(base_intent(
+            metrics=[{
+                "metric": "avg_delay_hours", "aggregation": "AVG",
+                "target_column": "", "is_expression": True,
+                "date_arithmetic": {"operation": "diff_hours", "col_a": "ship_date", "col_b": "order_date"},
+            }],
+        ))
+        assert_sql_contains(sql, "3600")
 
-run("4A-4-F: Invalid date_arithmetic.operation rejected",
-    base_intent(
-        metrics=[{
-            "metric":"bad",
-            "aggregation":"AVG",
-            "target_column":"",
-            "is_expression": True,
-            "date_arithmetic":{"operation":"diff_years","col_a":"ship_date","col_b":"order_date"},
-        }],
-    ),
-    expect_fail=True,
-)
+    def test_diff_seconds_sqlite(self):
+        sql, _ = run_valid(base_intent(
+            metrics=[{
+                "metric": "delay_secs", "aggregation": "AVG",
+                "target_column": "", "is_expression": True,
+                "date_arithmetic": {"operation": "diff_seconds", "col_a": "ship_date", "col_b": "order_date"},
+            }],
+        ), db_type="sqlite")
+        assert_sql_contains(sql, "86400", "julianday")
 
-run("4A-4-G: Generic raw expression (no date_arithmetic block)",
-    base_intent(
-        metrics=[{
-            "metric":"avg_ratio",
-            "aggregation":"AVG",
-            "target_column":"unit_price / NULLIF(quantity, 0)",
-            "is_expression": True,
-        }],
-    ),
-    must_contain=["AVG(unit_price / NULLIF(quantity, 0))"],
-)
+    def test_invalid_date_operation_rejected(self):
+        run_invalid(base_intent(
+            metrics=[{
+                "metric": "bad", "aggregation": "AVG",
+                "target_column": "", "is_expression": True,
+                "date_arithmetic": {"operation": "diff_years", "col_a": "ship_date", "col_b": "order_date"},
+            }],
+        ))
+
+    def test_generic_raw_expression_no_date_block(self):
+        sql, _ = run_valid(base_intent(
+            metrics=[{
+                "metric": "avg_ratio", "aggregation": "AVG",
+                "target_column": "unit_price / NULLIF(quantity, 0)", "is_expression": True,
+            }],
+        ))
+        assert_sql_contains(sql, "AVG(unit_price / NULLIF(quantity, 0))")
 
 
 # =============================================================================
 # SECTION 4A-5: NTILE and PERCENTILE_CONT
 # =============================================================================
-section("4A-5 · NTILE and PERCENTILE_CONT (W12, W13, X7 patterns)")
 
-run("4A-5-A: NTILE(10) PostgreSQL — revenue deciles (X7)",
-    base_intent(
-        metrics=[{
-            "metric":"revenue_decile",
-            "aggregation":"NTILE",
-            "ntile_buckets":10,
-            "order_by_column":"total_revenue",
-            "order_dir":"DESC",
-            "target_column":"",
-        }],
-    ),
-    must_contain=["NTILE(10)", "ORDER BY total_revenue DESC"],
-)
+class TestNtileAndPercentile:
 
-run("4A-5-B: NTILE(10) MySQL same syntax",
-    base_intent(
-        metrics=[{
-            "metric":"revenue_decile",
-            "aggregation":"NTILE",
-            "ntile_buckets":10,
-            "order_by_column":"total_revenue",
-            "order_dir":"DESC",
-            "target_column":"",
-        }],
-    ),
-    db_type="mysql",
-    must_contain=["NTILE(10)"],
-)
+    @pytest.mark.parametrize("db_type", ["postgresql", "mysql", "sqlite"])
+    def test_ntile_10_renders_across_dialects(self, db_type):
+        sql, _ = run_valid(base_intent(
+            metrics=[{
+                "metric": "revenue_decile", "aggregation": "NTILE",
+                "ntile_buckets": 10, "order_by_column": "total_revenue",
+                "order_dir": "DESC", "target_column": "",
+            }],
+        ), db_type=db_type)
+        assert_sql_contains(sql, "NTILE(10)")
 
-run("4A-5-C: NTILE(10) SQLite",
-    base_intent(
-        metrics=[{
-            "metric":"revenue_decile",
-            "aggregation":"NTILE",
-            "ntile_buckets":10,
-            "order_by_column":"total_revenue",
-            "order_dir":"DESC",
-            "target_column":"",
-        }],
-    ),
-    db_type="sqlite",
-    must_contain=["NTILE(10)"],
-)
+    def test_ntile_postgresql_order_clause(self):
+        sql, _ = run_valid(base_intent(
+            metrics=[{
+                "metric": "revenue_decile", "aggregation": "NTILE",
+                "ntile_buckets": 10, "order_by_column": "total_revenue",
+                "order_dir": "DESC", "target_column": "",
+            }],
+        ))
+        assert_sql_contains(sql, "NTILE(10)", "ORDER BY total_revenue DESC")
 
-run("4A-5-D: NTILE missing ntile_buckets rejected",
-    base_intent(
-        metrics=[{
-            "metric":"decile",
-            "aggregation":"NTILE",
-            "order_by_column":"total_revenue",
-            "target_column":"",
-        }],
-    ),
-    expect_fail=True,
-)
+    def test_ntile_missing_buckets_rejected(self):
+        run_invalid(base_intent(
+            metrics=[{
+                "metric": "decile", "aggregation": "NTILE",
+                "order_by_column": "total_revenue", "target_column": "",
+            }],
+        ))
 
-run("4A-5-E: PERCENTILE_CONT(0.5) PostgreSQL — median (W12)",
-    base_intent(
-        metrics=[{
-            "metric":"median_order_value",
-            "aggregation":"PERCENTILE_CONT",
-            "percentile":0.5,
-            "target_column":"unit_price",
-            "order_dir":"ASC",
-        }],
-    ),
-    must_contain=["PERCENTILE_CONT(0.5)", "WITHIN GROUP", "ORDER BY"],
-)
+    def test_percentile_cont_postgresql_native(self):
+        sql, _ = run_valid(base_intent(
+            metrics=[{
+                "metric": "median_order_value", "aggregation": "PERCENTILE_CONT",
+                "percentile": 0.5, "target_column": "unit_price", "order_dir": "ASC",
+            }],
+        ))
+        assert_sql_contains(sql, "PERCENTILE_CONT(0.5)", "WITHIN GROUP", "ORDER BY")
 
-run("4A-5-F: PERCENTILE_CONT(0.9) PostgreSQL",
-    base_intent(
-        metrics=[{
-            "metric":"p90",
-            "aggregation":"PERCENTILE_CONT",
-            "percentile":0.9,
-            "target_column":"unit_price",
-            "order_dir":"ASC",
-        }],
-    ),
-    must_contain=["PERCENTILE_CONT(0.9)"],
-)
+    def test_percentile_cont_90th_postgresql(self):
+        sql, _ = run_valid(base_intent(
+            metrics=[{
+                "metric": "p90", "aggregation": "PERCENTILE_CONT",
+                "percentile": 0.9, "target_column": "unit_price", "order_dir": "ASC",
+            }],
+        ))
+        assert_sql_contains(sql, "PERCENTILE_CONT(0.9)")
 
-run("4A-5-G: PERCENTILE_CONT SQLite emits fallback subquery",
-    base_intent(
-        metrics=[{
-            "metric":"median_order_value",
-            "aggregation":"PERCENTILE_CONT",
-            "percentile":0.5,
-            "target_column":"unit_price",
-            "order_dir":"ASC",
-        }],
-    ),
-    db_type="sqlite",
-    must_contain=["ROW_NUMBER", "cnt"],
-)
+    def test_percentile_cont_sqlite_fallback_subquery(self):
+        sql, _ = run_valid(base_intent(
+            metrics=[{
+                "metric": "median_order_value", "aggregation": "PERCENTILE_CONT",
+                "percentile": 0.5, "target_column": "unit_price", "order_dir": "ASC",
+            }],
+        ), db_type="sqlite")
+        assert_sql_contains(sql, "ROW_NUMBER", "cnt")
 
-run("4A-5-H: PERCENTILE_CONT percentile out of range rejected",
-    base_intent(
-        metrics=[{
-            "metric":"bad_p",
-            "aggregation":"PERCENTILE_CONT",
-            "percentile":1.5,
-            "target_column":"unit_price",
-        }],
-    ),
-    expect_fail=True,
-)
+    def test_percentile_out_of_range_rejected(self):
+        run_invalid(base_intent(
+            metrics=[{
+                "metric": "bad_p", "aggregation": "PERCENTILE_CONT",
+                "percentile": 1.5, "target_column": "unit_price",
+            }],
+        ))
 
 
 # =============================================================================
 # SECTION 4A-6: Standalone HAVING COUNT DISTINCT
 # =============================================================================
-section("4A-6 · Standalone HAVING aggregation — COUNT DISTINCT (A11, A15 patterns)")
 
-run("4A-6-A: HAVING COUNT(DISTINCT product_id) > 3 (A11 pattern)",
-    base_intent(
-        group_by=["fact_orders.order_id"],
-        having=[{
-            "aggregation":"COUNT",
-            "target_column":"product_id",
-            "distinct":True,
-            "operator":">",
-            "value":3,
-        }],
-    ),
-    must_contain=["COUNT(DISTINCT", "product_id", "> 3"],
-)
+class TestHavingCountDistinct:
 
-run("4A-6-B: HAVING COUNT DISTINCT across dialects — MySQL",
-    base_intent(
-        group_by=["fact_orders.order_id"],
-        having=[{
-            "aggregation":"COUNT",
-            "target_column":"product_id",
-            "distinct":True,
-            "operator":">",
-            "value":3,
-        }],
-    ),
-    db_type="mysql",
-    must_contain=["COUNT(DISTINCT"],
-)
+    @pytest.mark.parametrize("db_type", ["postgresql", "mysql", "sqlite"])
+    def test_having_count_distinct_all_dialects(self, db_type):
+        sql, _ = run_valid(base_intent(
+            group_by=["fact_orders.order_id"],
+            having=[{
+                "aggregation": "COUNT", "target_column": "product_id",
+                "distinct": True, "operator": ">", "value": 3,
+            }],
+        ), db_type=db_type)
+        assert_sql_contains(sql, "COUNT(DISTINCT")
 
-run("4A-6-C: HAVING COUNT DISTINCT across dialects — SQLite",
-    base_intent(
-        group_by=["fact_orders.order_id"],
-        having=[{
-            "aggregation":"COUNT",
-            "target_column":"product_id",
-            "distinct":True,
-            "operator":">",
-            "value":3,
-        }],
-    ),
-    db_type="sqlite",
-    must_contain=["COUNT(DISTINCT"],
-)
+    def test_having_count_distinct_postgresql_full(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["fact_orders.order_id"],
+            having=[{
+                "aggregation": "COUNT", "target_column": "product_id",
+                "distinct": True, "operator": ">", "value": 3,
+            }],
+        ))
+        assert_sql_contains(sql, "COUNT(DISTINCT", "product_id", "> 3")
 
-run("4A-6-D: HAVING SUM standalone (not in SELECT)",
-    base_intent(
-        group_by=["dim_products.category"],
-        joins=["fact_orders.product_id = dim_products.product_id"],
-        having=[{
-            "aggregation":"SUM",
-            "target_column":"unit_price",
-            "operator":">",
-            "value":50000,
-        }],
-    ),
-    must_contain=["HAVING SUM(", "> 50000"],
-)
+    def test_having_sum_standalone(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["dim_products.category"],
+            joins=["fact_orders.product_id = dim_products.product_id"],
+            having=[{
+                "aggregation": "SUM", "target_column": "unit_price",
+                "operator": ">", "value": 50000,
+            }],
+        ))
+        assert_sql_contains(sql, "HAVING SUM(", "> 50000")
 
-run("4A-6-E: HAVING references SELECT metric by name (backward compat)",
-    base_intent(
-        group_by=["dim_customers.country"],
-        joins=["fact_orders.customer_id = dim_customers.customer_id"],
-        having=[{"metric":"total_revenue","operator":">","value":1000}],
-    ),
-    must_contain=["HAVING", "1000"],
-)
+    def test_having_references_select_metric_by_name(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["dim_customers.country"],
+            joins=["fact_orders.customer_id = dim_customers.customer_id"],
+            having=[{"metric": "total_revenue", "operator": ">", "value": 1000}],
+        ))
+        assert_sql_contains(sql, "HAVING", "1000")
 
-run("4A-6-F: HAVING missing operator rejected",
-    base_intent(
-        having=[{"aggregation":"COUNT","target_column":"product_id","distinct":True,"value":3}],
-    ),
-    expect_fail=True,
-)
+    def test_having_missing_operator_rejected(self):
+        run_invalid(base_intent(
+            having=[{
+                "aggregation": "COUNT", "target_column": "product_id",
+                "distinct": True, "value": 3,
+            }],
+        ))
 
 
 # =============================================================================
 # SECTION 4A-7: CASE WHEN computed_columns[]
 # =============================================================================
-section("4A-7 · CASE WHEN computed_columns (I9, A3, A14, W8, X2, X10 patterns)")
 
-run("4A-7-A: High/Medium/Low spender tiers (A3 pattern)",
-    base_intent(
-        group_by=["fact_orders.customer_id"],
-        computed_columns=[{
-            "alias":"spending_tier",
-            "when_clauses":[
-                {"condition":"SUM(fact_orders.unit_price) > 5000","then":"'High'"},
-                {"condition":"SUM(fact_orders.unit_price) > 1000","then":"'Medium'"},
-            ],
-            "else_value":"'Low'",
-        }],
-    ),
-    must_contain=["CASE", "WHEN", "THEN", "ELSE", "END AS spending_tier"],
-)
+class TestCaseWhen:
 
-run("4A-7-B: Weekend / weekday bucket (I9 pattern)",
-    base_intent(
-        group_by=["EXTRACT(dow FROM fact_orders.order_date) AS dow"],
-        computed_columns=[{
-            "alias":"day_type",
-            "when_clauses":[
-                {"condition":"EXTRACT(dow FROM fact_orders.order_date) IN (0,6)","then":"'Weekend'"},
-            ],
-            "else_value":"'Weekday'",
-        }],
-    ),
-    must_contain=["CASE", "Weekend", "Weekday", "END AS day_type"],
-)
-
-run("4A-7-C: CASE WHEN alias appears in SELECT before metric",
-    base_intent(
-        computed_columns=[{
-            "alias":"revenue_band",
-            "when_clauses":[
-                {"condition":"SUM(fact_orders.unit_price) > 10000","then":"'Premium'"},
-            ],
-            "else_value":"'Standard'",
-        }],
-    ),
-    must_contain=["END AS revenue_band", "SUM(fact_orders.unit_price) AS total_revenue"],
-)
-
-run("4A-7-D: CASE WHEN with include_in_group_by=True appears in GROUP BY",
-    base_intent(
-        group_by=["fact_orders.customer_id"],
-        computed_columns=[{
-            "alias":"tier",
-            "when_clauses":[{"condition":"fact_orders.region = 'APAC'","then":"'Asia'"}],
-            "else_value":"'Other'",
-            "include_in_group_by":True,
-        }],
-    ),
-    must_contain=["GROUP BY", "CASE"],
-)
-
-run("4A-7-E: Multiple CASE WHEN columns",
-    base_intent(
-        computed_columns=[
-            {
-                "alias":"size_tier",
-                "when_clauses":[{"condition":"SUM(fact_orders.quantity) > 100","then":"'Large'"}],
-                "else_value":"'Small'",
-            },
-            {
-                "alias":"value_tier",
-                "when_clauses":[{"condition":"SUM(fact_orders.unit_price) > 5000","then":"'High'"}],
-                "else_value":"'Low'",
-            },
-        ],
-    ),
-    must_contain=["END AS size_tier", "END AS value_tier"],
-)
-
-run("4A-7-F: Missing alias rejected",
-    base_intent(
-        computed_columns=[{
-            "when_clauses":[{"condition":"1=1","then":"'x'"}],
-        }],
-    ),
-    expect_fail=True,
-)
-
-run("4A-7-G: Invalid alias (CamelCase) rejected",
-    base_intent(
-        computed_columns=[{
-            "alias":"SpendingTier",
-            "when_clauses":[{"condition":"1=1","then":"'x'"}],
-        }],
-    ),
-    expect_fail=True,
-)
-
-run("4A-7-H: Empty when_clauses rejected",
-    base_intent(
-        computed_columns=[{
-            "alias":"tier",
-            "when_clauses":[],
-        }],
-    ),
-    expect_fail=True,
-)
-
-run("4A-7-I: CASE WHEN MySQL — same syntax",
-    base_intent(
-        computed_columns=[{
-            "alias":"spending_tier",
-            "when_clauses":[{"condition":"SUM(fact_orders.unit_price) > 5000","then":"'High'"}],
-            "else_value":"'Low'",
-        }],
-    ),
-    db_type="mysql",
-    must_contain=["CASE", "WHEN", "END AS spending_tier"],
-)
-
-run("4A-7-J: CASE WHEN SQLite — same syntax",
-    base_intent(
-        computed_columns=[{
-            "alias":"spending_tier",
-            "when_clauses":[{"condition":"SUM(fact_orders.unit_price) > 5000","then":"'High'"}],
-            "else_value":"'Low'",
-        }],
-    ),
-    db_type="sqlite",
-    must_contain=["CASE", "WHEN", "END AS spending_tier"],
-)
-
-
-# =============================================================================
-# SECTION S: Official 5-Question Smoke Test (per audit roadmap)
-# =============================================================================
-section("SMOKE TEST · 5 Official Questions from Audit Plan")
-
-# S1 — E9: Customers without valid email (IS NULL)
-run("S1 · E9: Customers without valid email",
-    base_intent(
-        fact_table="dim_customers",
-        metrics=[{"metric":"cust_count","aggregation":"COUNT","target_column":"customer_id","distinct":False}],
-        filters=[{"column":"email","operator":"IS NULL"}],
-        joins=[],
-    ),
-    must_contain=["WHERE", "email IS NULL"],
-    check_params=[],
-)
-
-# S2 — I2: Products never ordered (LEFT JOIN anti-join)
-run("S2 · I2: Products never ordered",
-    base_intent(
-        fact_table="dim_products",
-        metrics=[{"metric":"product_count","aggregation":"COUNT","target_column":"product_id","distinct":False}],
-        group_by=["dim_products.product_name"],
-        joins=[{"type":"LEFT","condition":"dim_products.product_id = fact_orders.product_id"}],
-        filters=[{"column":"fact_orders.product_id","operator":"IS NULL"}],
-    ),
-    must_contain=["LEFT JOIN", "fact_orders.product_id IS NULL"],
-    check_params=[],
-)
-
-# S3 — A2: Average shipping delay in days (date arithmetic)
-run("S3 · A2: Average shipping delay in days",
-    base_intent(
-        metrics=[{
-            "metric":"avg_delay_days",
-            "aggregation":"AVG",
-            "target_column":"",
-            "is_expression":True,
-            "date_arithmetic":{"operation":"diff_days","col_a":"ship_date","col_b":"order_date"},
-        }],
-    ),
-    must_contain=["AVG(", "epoch", "86400"],
-)
-
-# S4 — X7: Products in revenue deciles (NTILE)
-run("S4 · X7: Products in revenue deciles",
-    base_intent(
-        metrics=[
-            {"metric":"total_revenue","aggregation":"SUM","target_column":"unit_price","distinct":False},
-            {
-                "metric":"revenue_decile",
-                "aggregation":"NTILE",
-                "ntile_buckets":10,
-                "order_by_column":"total_revenue",
-                "order_dir":"DESC",
-                "target_column":"",
-            },
-        ],
-        group_by=["fact_orders.product_id"],
-    ),
-    must_contain=["NTILE(10)", "SUM(fact_orders.unit_price)"],
-)
-
-# S5 — A3: High/Medium/Low spender categories (CASE WHEN)
-run("S5 · A3: High/Medium/Low spender categories",
-    base_intent(
-        group_by=["fact_orders.customer_id"],
-        computed_columns=[{
-            "alias":"spending_tier",
-            "when_clauses":[
-                {"condition":"SUM(fact_orders.unit_price) > 5000","then":"'High'"},
-                {"condition":"SUM(fact_orders.unit_price) > 1000","then":"'Medium'"},
-            ],
-            "else_value":"'Low'",
-        }],
-    ),
-    must_contain=["CASE", "WHEN SUM(fact_orders.unit_price) > 5000 THEN 'High'",
-                  "WHEN SUM(fact_orders.unit_price) > 1000 THEN 'Medium'",
-                  "ELSE 'Low'", "END AS spending_tier"],
-)
-
-
-# =============================================================================
-# SECTION X: Cross-Feature Compound Queries
-# =============================================================================
-section("X · Cross-feature compound (≥3 patterns per query)")
-
-# X1: Anti-join + IS NULL + time filter (I2 + E9 + time)
-run("X1 · Anti-join + IS NULL + time_filter",
-    base_intent(
-        fact_table="dim_customers",
-        metrics=[{"metric":"cust_count","aggregation":"COUNT","target_column":"customer_id","distinct":False}],
-        group_by=["dim_customers.city"],
-        joins=[{"type":"LEFT","condition":"dim_customers.customer_id = fact_orders.customer_id"}],
-        filters=[{"column":"fact_orders.customer_id","operator":"IS NULL"},
-                 {"column":"dim_customers.email","operator":"IS NOT NULL"}],
-    ),
-    must_contain=["LEFT JOIN", "IS NULL", "IS NOT NULL", "GROUP BY"],
-)
-
-# X2: CASE WHEN + EXTRACT + HAVING COUNT DISTINCT (I9 + A11)
-run("X2 · CASE WHEN + EXTRACT + HAVING COUNT DISTINCT",
-    base_intent(
-        group_by=["EXTRACT(dow FROM fact_orders.order_date) AS dow"],
-        computed_columns=[{
-            "alias":"day_type",
-            "when_clauses":[{"condition":"EXTRACT(dow FROM fact_orders.order_date) IN (0,6)","then":"'Weekend'"}],
-            "else_value":"'Weekday'",
-        }],
-        having=[{
-            "aggregation":"COUNT",
-            "target_column":"order_id",
-            "distinct":True,
-            "operator":">",
-            "value":100,
-        }],
-    ),
-    must_contain=["CASE", "EXTRACT(dow", "COUNT(DISTINCT", "> 100"],
-)
-
-# X3: Date arith + CASE WHEN + LEFT JOIN (A2 + A3 + I2)
-run("X3 · Date arith + CASE WHEN + HAVING (compound A2+A3)",
-    base_intent(
-        group_by=["fact_orders.customer_id"],
-        metrics=[
-            {"metric":"total_revenue","aggregation":"SUM","target_column":"unit_price","distinct":False},
-            {
-                "metric":"avg_ship_delay",
-                "aggregation":"AVG",
-                "target_column":"",
-                "is_expression":True,
-                "date_arithmetic":{"operation":"diff_days","col_a":"ship_date","col_b":"order_date"},
-            },
-        ],
-        computed_columns=[{
-            "alias":"customer_tier",
-            "when_clauses":[{"condition":"SUM(fact_orders.unit_price) > 5000","then":"'High'"}],
-            "else_value":"'Standard'",
-        }],
-        having=[{"metric":"total_revenue","operator":">","value":500}],
-    ),
-    must_contain=["SUM(fact_orders.unit_price)", "AVG(", "epoch", "CASE", "HAVING"],
-)
-
-# X4: NTILE + JOIN + CASE WHEN + filter (X7 + A3)
-run("X4 · NTILE + JOIN + CASE WHEN",
-    base_intent(
-        group_by=["dim_products.category"],
-        joins=["fact_orders.product_id = dim_products.product_id"],
-        metrics=[
-            {"metric":"total_revenue","aggregation":"SUM","target_column":"unit_price","distinct":False},
-            {
-                "metric":"cat_decile",
-                "aggregation":"NTILE",
-                "ntile_buckets":10,
-                "order_by_column":"total_revenue",
-                "order_dir":"DESC",
-                "target_column":"",
-            },
-        ],
-        computed_columns=[{
-            "alias":"revenue_band",
-            "when_clauses":[
-                {"condition":"SUM(fact_orders.unit_price) > 100000","then":"'Tier 1'"},
-                {"condition":"SUM(fact_orders.unit_price) > 50000","then":"'Tier 2'"},
-            ],
-            "else_value":"'Tier 3'",
-        }],
-    ),
-    must_contain=["NTILE(10)", "JOIN dim_products", "CASE", "Tier 1"],
-)
-
-
-# =============================================================================
-# SECTION R: Sprint 1 + 2 + 3 Regression Battery
-# =============================================================================
-section("R · Sprint 1+2+3 Regression Battery")
-
-run("R1 · S1 Revenue by month (DATE_TRUNC)",
-    base_intent(
-        time_bucket="month",
-        time_bucket_column="order_date",
-    ),
-    must_contain=["DATE_TRUNC('month'", "month_period"],
-)
-
-run("R2 · S1 Orders/week 2017 (year filter)",
-    base_intent(
-        metrics=[{"metric":"order_count","aggregation":"COUNT","target_column":"order_id","distinct":False}],
-        time_bucket="week",
-        time_bucket_column="order_date",
-        time_filter={"column":"order_date","year":2017},
-    ),
-    must_contain=["2017", "week_period"],
-)
-
-run("R3 · S1 Categories revenue > 50k (HAVING)",
-    base_intent(
-        group_by=["dim_products.category"],
-        joins=["fact_orders.product_id = dim_products.product_id"],
-        having=[{"metric":"total_revenue","operator":">","value":50000}],
-    ),
-    must_contain=["HAVING", "50000"],
-)
-
-run("R4 · S2 Multi-metric: revenue + orders by state",
-    base_intent(
-        metrics=[
-            {"metric":"total_revenue","aggregation":"SUM","target_column":"unit_price","distinct":False},
-            {"metric":"order_count","aggregation":"COUNT","target_column":"order_id","distinct":False},
-        ],
-        group_by=["dim_customers.city"],
-        joins=["fact_orders.customer_id = dim_customers.customer_id"],
-    ),
-    must_contain=["SUM(fact_orders.unit_price) AS total_revenue",
-                  "COUNT(*) AS order_count"],
-)
-
-run("R5 · S3 Multi-hop: fact → products → (auto-repaired from group_by)",
-    base_intent(
-        group_by=["dim_products.category"],
-        joins=[],  # auto-repair should add the join
-    ),
-    must_contain=["JOIN dim_products ON"],
-)
-
-run("R6 · S1+S2 Monthly + HAVING + multi-metric",
-    base_intent(
-        metrics=[
-            {"metric":"total_revenue","aggregation":"SUM","target_column":"unit_price","distinct":False},
-            {"metric":"order_count","aggregation":"COUNT","target_column":"order_id","distinct":False},
-        ],
-        time_bucket="month",
-        time_bucket_column="order_date",
-        having=[{"metric":"total_revenue","operator":">","value":10000}],
-    ),
-    must_contain=["DATE_TRUNC", "HAVING", "SUM", "COUNT"],
-)
-
-
-# =============================================================================
-# SECTION D: Dialect Integrity Matrix (all new patterns, all 3 dialects)
-# =============================================================================
-section("D · Dialect Integrity Matrix (new patterns × 3 dialects)")
-
-for db in ("postgresql","mysql","sqlite"):
-    run(f"D-ISNULL-{db}: IS NULL syntax identical",
-        base_intent(
-            fact_table="dim_customers",
-            metrics=[{"metric":"n","aggregation":"COUNT","target_column":"customer_id","distinct":False}],
-            filters=[{"column":"email","operator":"IS NULL"}],
-        ),
-        db_type=db,
-        must_contain=["IS NULL"],
-        check_params=[],
-    )
-
-for db in ("postgresql","mysql","sqlite"):
-    run(f"D-LEFTJOIN-{db}: LEFT JOIN keyword",
-        base_intent(
-            fact_table="dim_products",
-            metrics=[{"metric":"n","aggregation":"COUNT","target_column":"product_id","distinct":False}],
-            joins=[{"type":"LEFT","condition":"dim_products.product_id = fact_orders.product_id"}],
-        ),
-        db_type=db,
-        must_contain=["LEFT JOIN"],
-    )
-
-for db in ("postgresql","mysql","sqlite"):
-    run(f"D-CASEWHEN-{db}: CASE WHEN syntax identical",
-        base_intent(
+    def test_high_medium_low_spending_tiers(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["fact_orders.customer_id"],
             computed_columns=[{
-                "alias":"tier",
-                "when_clauses":[{"condition":"SUM(fact_orders.unit_price) > 1000","then":"'High'"}],
-                "else_value":"'Low'",
+                "alias": "spending_tier",
+                "when_clauses": [
+                    {"condition": "SUM(fact_orders.unit_price) > 5000", "then": "'High'"},
+                    {"condition": "SUM(fact_orders.unit_price) > 1000", "then": "'Medium'"},
+                ],
+                "else_value": "'Low'",
             }],
-        ),
-        db_type=db,
-        must_contain=["CASE", "WHEN", "THEN", "ELSE", "END AS tier"],
-    )
+        ))
+        assert_sql_contains(sql, "CASE", "WHEN", "THEN", "ELSE", "END AS spending_tier")
 
-for db,expected in (
-    ("postgresql", "epoch"),
-    ("mysql",      "TIMESTAMPDIFF"),
-    ("sqlite",     "julianday"),
-):
-    run(f"D-DATEARITH-{db}: diff_days uses correct dialect expression",
-        base_intent(
+    def test_weekend_weekday_bucket(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["EXTRACT(dow FROM fact_orders.order_date) AS dow"],
+            computed_columns=[{
+                "alias": "day_type",
+                "when_clauses": [
+                    {"condition": "EXTRACT(dow FROM fact_orders.order_date) IN (0,6)", "then": "'Weekend'"},
+                ],
+                "else_value": "'Weekday'",
+            }],
+        ))
+        assert_sql_contains(sql, "CASE", "Weekend", "Weekday", "END AS day_type")
+
+    def test_case_when_alias_appears_before_metric(self):
+        sql, _ = run_valid(base_intent(
+            computed_columns=[{
+                "alias": "revenue_band",
+                "when_clauses": [
+                    {"condition": "SUM(fact_orders.unit_price) > 10000", "then": "'Premium'"},
+                ],
+                "else_value": "'Standard'",
+            }],
+        ))
+        assert_sql_contains(sql, "END AS revenue_band", "SUM(fact_orders.unit_price) AS total_revenue")
+
+    def test_include_in_group_by_adds_to_group_by_clause(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["fact_orders.customer_id"],
+            computed_columns=[{
+                "alias": "tier",
+                "when_clauses": [{"condition": "fact_orders.region = 'APAC'", "then": "'Asia'"}],
+                "else_value": "'Other'",
+                "include_in_group_by": True,
+            }],
+        ))
+        assert_sql_contains(sql, "GROUP BY", "CASE")
+
+    def test_multiple_case_when_columns(self):
+        sql, _ = run_valid(base_intent(
+            computed_columns=[
+                {
+                    "alias": "size_tier",
+                    "when_clauses": [{"condition": "SUM(fact_orders.quantity) > 100", "then": "'Large'"}],
+                    "else_value": "'Small'",
+                },
+                {
+                    "alias": "value_tier",
+                    "when_clauses": [{"condition": "SUM(fact_orders.unit_price) > 5000", "then": "'High'"}],
+                    "else_value": "'Low'",
+                },
+            ],
+        ))
+        assert_sql_contains(sql, "END AS size_tier", "END AS value_tier")
+
+    def test_missing_alias_rejected(self):
+        run_invalid(base_intent(
+            computed_columns=[{"when_clauses": [{"condition": "1=1", "then": "'x'"}]}],
+        ))
+
+    def test_camel_case_alias_rejected(self):
+        run_invalid(base_intent(
+            computed_columns=[{
+                "alias": "SpendingTier",
+                "when_clauses": [{"condition": "1=1", "then": "'x'"}],
+            }],
+        ))
+
+    def test_empty_when_clauses_rejected(self):
+        run_invalid(base_intent(
+            computed_columns=[{"alias": "tier", "when_clauses": []}],
+        ))
+
+    @pytest.mark.parametrize("db_type", ["mysql", "sqlite"])
+    def test_case_when_syntax_identical_across_dialects(self, db_type):
+        sql, _ = run_valid(base_intent(
+            computed_columns=[{
+                "alias": "spending_tier",
+                "when_clauses": [{"condition": "SUM(fact_orders.unit_price) > 5000", "then": "'High'"}],
+                "else_value": "'Low'",
+            }],
+        ), db_type=db_type)
+        assert_sql_contains(sql, "CASE", "WHEN", "END AS spending_tier")
+
+
+# =============================================================================
+# SECTION SMOKE: Official 5-Question Smoke Test
+# =============================================================================
+
+class TestSmokeTest:
+
+    def test_s1_customers_without_email(self):
+        """E9: Customers without valid email (IS NULL)."""
+        sql, params = run_valid(base_intent(
+            fact_table="dim_customers",
+            metrics=[{"metric": "cust_count", "aggregation": "COUNT",
+                      "target_column": "customer_id", "distinct": False}],
+            filters=[{"column": "email", "operator": "IS NULL"}],
+            joins=[],
+        ))
+        assert_sql_contains(sql, "WHERE", "email IS NULL")
+        assert params == []
+
+    def test_s2_products_never_ordered(self):
+        """I2: Products never ordered (LEFT JOIN anti-join)."""
+        sql, params = run_valid(base_intent(
+            fact_table="dim_products",
+            metrics=[{"metric": "product_count", "aggregation": "COUNT",
+                      "target_column": "product_id", "distinct": False}],
+            group_by=["dim_products.product_name"],
+            joins=[{"type": "LEFT", "condition": "dim_products.product_id = fact_orders.product_id"}],
+            filters=[{"column": "fact_orders.product_id", "operator": "IS NULL"}],
+        ))
+        assert_sql_contains(sql, "LEFT JOIN", "fact_orders.product_id IS NULL")
+        assert params == []
+
+    def test_s3_avg_shipping_delay(self):
+        """A2: Average shipping delay in days (date arithmetic)."""
+        sql, _ = run_valid(base_intent(
             metrics=[{
-                "metric":"d",
-                "aggregation":"AVG",
-                "target_column":"",
-                "is_expression":True,
-                "date_arithmetic":{"operation":"diff_days","col_a":"ship_date","col_b":"order_date"},
+                "metric": "avg_delay_days", "aggregation": "AVG",
+                "target_column": "", "is_expression": True,
+                "date_arithmetic": {"operation": "diff_days", "col_a": "ship_date", "col_b": "order_date"},
             }],
-        ),
-        db_type=db,
-        must_contain=[expected],
-    )
+        ))
+        assert_sql_contains(sql, "AVG(", "epoch", "86400")
 
-for db in ("postgresql","mysql","sqlite"):
-    run(f"D-NTILE-{db}: NTILE(5) present",
-        base_intent(
+    def test_s4_revenue_deciles_ntile(self):
+        """X7: Products in revenue deciles (NTILE)."""
+        sql, _ = run_valid(base_intent(
+            metrics=[
+                {"metric": "total_revenue", "aggregation": "SUM",
+                 "target_column": "unit_price", "distinct": False},
+                {
+                    "metric": "revenue_decile", "aggregation": "NTILE",
+                    "ntile_buckets": 10, "order_by_column": "total_revenue",
+                    "order_dir": "DESC", "target_column": "",
+                },
+            ],
+            group_by=["fact_orders.product_id"],
+        ))
+        assert_sql_contains(sql, "NTILE(10)", "SUM(fact_orders.unit_price)")
+
+    def test_s5_high_medium_low_spender_case_when(self):
+        """A3: High/Medium/Low spender categories (CASE WHEN)."""
+        sql, _ = run_valid(base_intent(
+            group_by=["fact_orders.customer_id"],
+            computed_columns=[{
+                "alias": "spending_tier",
+                "when_clauses": [
+                    {"condition": "SUM(fact_orders.unit_price) > 5000", "then": "'High'"},
+                    {"condition": "SUM(fact_orders.unit_price) > 1000", "then": "'Medium'"},
+                ],
+                "else_value": "'Low'",
+            }],
+        ))
+        assert_sql_contains(
+            sql,
+            "CASE",
+            "WHEN SUM(fact_orders.unit_price) > 5000 THEN 'High'",
+            "WHEN SUM(fact_orders.unit_price) > 1000 THEN 'Medium'",
+            "ELSE 'Low'",
+            "END AS spending_tier",
+        )
+
+
+# =============================================================================
+# SECTION CROSS: Cross-Feature Compound Queries (≥3 patterns per query)
+# =============================================================================
+
+class TestCrossFeature:
+
+    def test_x1_anti_join_plus_is_null_plus_time_filter(self):
+        sql, _ = run_valid(base_intent(
+            fact_table="dim_customers",
+            metrics=[{"metric": "cust_count", "aggregation": "COUNT",
+                      "target_column": "customer_id", "distinct": False}],
+            group_by=["dim_customers.city"],
+            joins=[{"type": "LEFT", "condition": "dim_customers.customer_id = fact_orders.customer_id"}],
+            filters=[
+                {"column": "fact_orders.customer_id", "operator": "IS NULL"},
+                {"column": "dim_customers.email", "operator": "IS NOT NULL"},
+            ],
+        ))
+        assert_sql_contains(sql, "LEFT JOIN", "IS NULL", "IS NOT NULL", "GROUP BY")
+
+    def test_x2_case_when_plus_extract_plus_having_count_distinct(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["EXTRACT(dow FROM fact_orders.order_date) AS dow"],
+            computed_columns=[{
+                "alias": "day_type",
+                "when_clauses": [
+                    {"condition": "EXTRACT(dow FROM fact_orders.order_date) IN (0,6)", "then": "'Weekend'"},
+                ],
+                "else_value": "'Weekday'",
+            }],
+            having=[{
+                "aggregation": "COUNT", "target_column": "order_id",
+                "distinct": True, "operator": ">", "value": 100,
+            }],
+        ))
+        assert_sql_contains(sql, "CASE", "EXTRACT(dow", "COUNT(DISTINCT", "> 100")
+
+    def test_x3_date_arith_plus_case_when_plus_having(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["fact_orders.customer_id"],
+            metrics=[
+                {"metric": "total_revenue", "aggregation": "SUM",
+                 "target_column": "unit_price", "distinct": False},
+                {
+                    "metric": "avg_ship_delay", "aggregation": "AVG",
+                    "target_column": "", "is_expression": True,
+                    "date_arithmetic": {"operation": "diff_days", "col_a": "ship_date", "col_b": "order_date"},
+                },
+            ],
+            computed_columns=[{
+                "alias": "customer_tier",
+                "when_clauses": [{"condition": "SUM(fact_orders.unit_price) > 5000", "then": "'High'"}],
+                "else_value": "'Standard'",
+            }],
+            having=[{"metric": "total_revenue", "operator": ">", "value": 500}],
+        ))
+        assert_sql_contains(sql, "SUM(fact_orders.unit_price)", "AVG(", "epoch", "CASE", "HAVING")
+
+    def test_x4_ntile_plus_join_plus_case_when(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["dim_products.category"],
+            joins=["fact_orders.product_id = dim_products.product_id"],
+            metrics=[
+                {"metric": "total_revenue", "aggregation": "SUM",
+                 "target_column": "unit_price", "distinct": False},
+                {
+                    "metric": "cat_decile", "aggregation": "NTILE",
+                    "ntile_buckets": 10, "order_by_column": "total_revenue",
+                    "order_dir": "DESC", "target_column": "",
+                },
+            ],
+            computed_columns=[{
+                "alias": "revenue_band",
+                "when_clauses": [
+                    {"condition": "SUM(fact_orders.unit_price) > 100000", "then": "'Tier 1'"},
+                    {"condition": "SUM(fact_orders.unit_price) > 50000",  "then": "'Tier 2'"},
+                ],
+                "else_value": "'Tier 3'",
+            }],
+        ))
+        assert_sql_contains(sql, "NTILE(10)", "JOIN dim_products", "CASE", "Tier 1")
+
+
+# =============================================================================
+# SECTION REGRESSION: Sprint 1 + 2 + 3 Battery
+# =============================================================================
+
+class TestRegressionBattery:
+
+    def test_r1_revenue_by_month_date_trunc(self):
+        sql, _ = run_valid(base_intent(
+            time_bucket="month",
+            time_bucket_column="order_date",
+        ))
+        assert_sql_contains(sql, "DATE_TRUNC('month'", "month_period")
+
+    def test_r2_orders_per_week_2017_year_filter(self):
+        sql, _ = run_valid(base_intent(
+            metrics=[{"metric": "order_count", "aggregation": "COUNT",
+                      "target_column": "order_id", "distinct": False}],
+            time_bucket="week",
+            time_bucket_column="order_date",
+            time_filter={"column": "order_date", "year": 2017},
+        ))
+        assert_sql_contains(sql, "2017", "week_period")
+
+    def test_r3_categories_revenue_having(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["dim_products.category"],
+            joins=["fact_orders.product_id = dim_products.product_id"],
+            having=[{"metric": "total_revenue", "operator": ">", "value": 50000}],
+        ))
+        assert_sql_contains(sql, "HAVING", "50000")
+
+    def test_r4_multi_metric_revenue_and_orders(self):
+        sql, _ = run_valid(base_intent(
+            metrics=[
+                {"metric": "total_revenue", "aggregation": "SUM",
+                 "target_column": "unit_price", "distinct": False},
+                {"metric": "order_count", "aggregation": "COUNT",
+                 "target_column": "order_id", "distinct": False},
+            ],
+            group_by=["dim_customers.city"],
+            joins=["fact_orders.customer_id = dim_customers.customer_id"],
+        ))
+        assert_sql_contains(
+            sql,
+            "SUM(fact_orders.unit_price) AS total_revenue",
+            "COUNT(*) AS order_count",
+        )
+
+    def test_r5_multi_hop_bfs_auto_repairs_join(self):
+        sql, _ = run_valid(base_intent(
+            group_by=["dim_products.category"],
+            joins=[],  # auto-repair should add the join
+        ))
+        assert_sql_contains(sql, "JOIN dim_products ON")
+
+    def test_r6_monthly_having_multi_metric(self):
+        sql, _ = run_valid(base_intent(
+            metrics=[
+                {"metric": "total_revenue", "aggregation": "SUM",
+                 "target_column": "unit_price", "distinct": False},
+                {"metric": "order_count", "aggregation": "COUNT",
+                 "target_column": "order_id", "distinct": False},
+            ],
+            time_bucket="month",
+            time_bucket_column="order_date",
+            having=[{"metric": "total_revenue", "operator": ">", "value": 10000}],
+        ))
+        assert_sql_contains(sql, "DATE_TRUNC", "HAVING", "SUM", "COUNT")
+
+
+# =============================================================================
+# SECTION DIALECT: Dialect Integrity Matrix
+# =============================================================================
+
+class TestDialectMatrix:
+
+    @pytest.mark.parametrize("db_type", ["postgresql", "mysql", "sqlite"])
+    def test_is_null_syntax_identical_all_dialects(self, db_type):
+        sql, params = run_valid(base_intent(
+            fact_table="dim_customers",
+            metrics=[{"metric": "n", "aggregation": "COUNT",
+                      "target_column": "customer_id", "distinct": False}],
+            filters=[{"column": "email", "operator": "IS NULL"}],
+        ), db_type=db_type)
+        assert_sql_contains(sql, "IS NULL")
+        assert params == []
+
+    @pytest.mark.parametrize("db_type", ["postgresql", "mysql", "sqlite"])
+    def test_left_join_keyword_all_dialects(self, db_type):
+        sql, _ = run_valid(base_intent(
+            fact_table="dim_products",
+            metrics=[{"metric": "n", "aggregation": "COUNT",
+                      "target_column": "product_id", "distinct": False}],
+            joins=[{"type": "LEFT", "condition": "dim_products.product_id = fact_orders.product_id"}],
+        ), db_type=db_type)
+        assert_sql_contains(sql, "LEFT JOIN")
+
+    @pytest.mark.parametrize("db_type", ["postgresql", "mysql", "sqlite"])
+    def test_case_when_syntax_all_dialects(self, db_type):
+        sql, _ = run_valid(base_intent(
+            computed_columns=[{
+                "alias": "tier",
+                "when_clauses": [{"condition": "SUM(fact_orders.unit_price) > 1000", "then": "'High'"}],
+                "else_value": "'Low'",
+            }],
+        ), db_type=db_type)
+        assert_sql_contains(sql, "CASE", "WHEN", "THEN", "ELSE", "END AS tier")
+
+    @pytest.mark.parametrize("db_type,expected", [
+        ("postgresql", "epoch"),
+        ("mysql",      "TIMESTAMPDIFF"),
+        ("sqlite",     "julianday"),
+    ])
+    def test_diff_days_dialect_expression(self, db_type, expected):
+        sql, _ = run_valid(base_intent(
             metrics=[{
-                "metric":"q","aggregation":"NTILE","ntile_buckets":5,
-                "order_by_column":"total_revenue","order_dir":"DESC","target_column":"",
+                "metric": "d", "aggregation": "AVG",
+                "target_column": "", "is_expression": True,
+                "date_arithmetic": {"operation": "diff_days", "col_a": "ship_date", "col_b": "order_date"},
             }],
-        ),
-        db_type=db,
-        must_contain=["NTILE(5)"],
-    )
+        ), db_type=db_type)
+        assert_sql_contains(sql, expected)
 
-run("D-PERCENTILE-postgresql: PERCENTILE_CONT WITHIN GROUP",
-    base_intent(
-        metrics=[{"metric":"med","aggregation":"PERCENTILE_CONT","percentile":0.5,
-                  "target_column":"unit_price","order_dir":"ASC"}],
-    ),
-    db_type="postgresql",
-    must_contain=["PERCENTILE_CONT(0.5)", "WITHIN GROUP"],
-)
+    @pytest.mark.parametrize("db_type", ["postgresql", "mysql", "sqlite"])
+    def test_ntile5_all_dialects(self, db_type):
+        sql, _ = run_valid(base_intent(
+            metrics=[{
+                "metric": "q", "aggregation": "NTILE", "ntile_buckets": 5,
+                "order_by_column": "total_revenue", "order_dir": "DESC", "target_column": "",
+            }],
+        ), db_type=db_type)
+        assert_sql_contains(sql, "NTILE(5)")
 
-run("D-PERCENTILE-sqlite: fallback ROW_NUMBER subquery",
-    base_intent(
-        metrics=[{"metric":"med","aggregation":"PERCENTILE_CONT","percentile":0.5,
-                  "target_column":"unit_price","order_dir":"ASC"}],
-    ),
-    db_type="sqlite",
-    must_contain=["ROW_NUMBER", "cnt"],
-    must_not_contain=["WITHIN GROUP"],
-)
+    def test_percentile_cont_postgresql_within_group(self):
+        sql, _ = run_valid(base_intent(
+            metrics=[{"metric": "med", "aggregation": "PERCENTILE_CONT",
+                      "percentile": 0.5, "target_column": "unit_price", "order_dir": "ASC"}],
+        ), db_type="postgresql")
+        assert_sql_contains(sql, "PERCENTILE_CONT(0.5)", "WITHIN GROUP")
 
-for db in ("postgresql","mysql","sqlite"):
-    run(f"D-HAVINGDIST-{db}: COUNT(DISTINCT) in HAVING",
-        base_intent(
+    def test_percentile_cont_sqlite_fallback_no_within_group(self):
+        sql, _ = run_valid(base_intent(
+            metrics=[{"metric": "med", "aggregation": "PERCENTILE_CONT",
+                      "percentile": 0.5, "target_column": "unit_price", "order_dir": "ASC"}],
+        ), db_type="sqlite")
+        assert_sql_contains(sql, "ROW_NUMBER", "cnt")
+        assert_sql_not_contains(sql, "WITHIN GROUP")
+
+    @pytest.mark.parametrize("db_type", ["postgresql", "mysql", "sqlite"])
+    def test_having_count_distinct_all_dialects(self, db_type):
+        sql, _ = run_valid(base_intent(
             group_by=["fact_orders.order_id"],
-            having=[{"aggregation":"COUNT","target_column":"product_id","distinct":True,
-                     "operator":">","value":2}],
-        ),
-        db_type=db,
-        must_contain=["COUNT(DISTINCT"],
-    )
-
-
-# =============================================================================
-# FINAL REPORT
-# =============================================================================
-total = PASS + FAIL
-section(f"RESULTS  —  {PASS}/{total} passed  ({FAIL} failed)")
-
-if ERRORS:
-    print()
-    for e in ERRORS:
-        print(e)
-        print()
-
-if FAIL:
-    sys.exit(1)
-else:
-    print("\n  ✅  All Sprint 4A tests passed. v3.0 is GREEN.\n")
+            having=[{
+                "aggregation": "COUNT", "target_column": "product_id",
+                "distinct": True, "operator": ">", "value": 2,
+            }],
+        ), db_type=db_type)
+        assert_sql_contains(sql, "COUNT(DISTINCT")

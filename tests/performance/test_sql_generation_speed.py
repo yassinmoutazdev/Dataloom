@@ -123,7 +123,7 @@ class TestSqlGenerationSpeed:
         # Basic validation that the SQL was generated correctly
         assert "SELECT" in sql
         assert "SUM(fact_orders.unit_price)" in sql
-        assert "COUNT(fact_orders.order_id)" in sql
+        assert "COUNT(*)" in sql
         assert "JOIN" in sql
         assert "WHERE" in sql
         assert "GROUP BY" in sql

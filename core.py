@@ -2,14 +2,32 @@
 
 This module coordinates the transformation of natural language questions into
 executable SQL queries. It manages intent parsing, validation, SQL building,
-query execution, and result summarization. It serves as the primary interface
+query execution, and result delivery. It serves as the primary interface
 for both CLI and Web UI components.
 """
 from intent_parser import parse_intent, parse_retry, parse_validation_retry, is_vague_question, _strip_meta
 from validator import validate_intent, set_join_paths, humanize_errors
 from sql_builder import build_sql
-from summarizer import summarize
 from memory import IntentMemory
+
+# Fields consumed by the pipeline but never by sql_builder.py.
+# _strip_meta() (in intent_parser.py) already removes {"confidence", "reasoning"}.
+# _strip_builder_fields() removes the remaining pipeline-only fields so the
+# builder receives the smallest possible dict — no dead weight on every call.
+_BUILDER_ONLY_STRIP = frozenset({"clarification_needed", "_question"})
+
+
+def _strip_builder_fields(intent: dict) -> dict:
+    """Remove all pipeline-only fields before the intent reaches sql_builder.py.
+
+    Covers the fields _strip_meta() leaves behind:
+      - clarification_needed: consumed at Stage 3, irrelevant to SQL generation.
+      - _question: injected at Stage 5 for ranking detection; not a schema field.
+
+    Call this on the already-stripped clean_intent immediately before build_sql().
+    Safe to call multiple times (idempotent).
+    """
+    return {k: v for k, v in intent.items() if k not in _BUILDER_ONLY_STRIP}
 
 
 def init_join_paths(join_paths: dict):
@@ -72,12 +90,12 @@ def run_pipeline(
     model_config: dict,
     conn,
     db_type: str,
-    credentials: dict = None,
+    credentials: dict | None = None,
 ) -> dict:
     """Execute the full query pipeline for a single natural language question.
 
     Coordinates intent extraction, validation, SQL building, execution,
-    automatic error correction, and summarization.
+    automatic error correction, and result delivery.
 
     Args:
         question: The user's input question.
@@ -97,13 +115,13 @@ def run_pipeline(
             - sql: The final SQL query that was executed.
             - headers: Column names for the result set.
             - rows: The actual data returned by the database.
-            - summary: LLM-generated summary of the findings.
             - error: Human-readable error message on failure.
             - corrected: True if the query required model self-correction.
             - clarification: Prompt for more info if the question was vague.
             - confidence: The model's reported confidence level.
     """
     from db_connector import run_query, rollback, reconnect
+    from schema import invalidate_schema_cache
 
     result = {
         "success":       False,
@@ -111,7 +129,6 @@ def run_pipeline(
         "sql":           None,
         "headers":       [],
         "rows":          [],
-        "summary":       "",
         "error":         None,
         "corrected":     False,
         "clarification": None,
@@ -165,9 +182,10 @@ def run_pipeline(
         result["error_detail"] = errors   # preserved for logging/observability
         return result
 
-    # Construct the SQL query and its parameterized arguments
+    # Construct the SQL query and its parameterized arguments.
+    # Strip pipeline-only fields that sql_builder.py does not consume.
     try:
-        sql, params = build_sql(clean_intent, db_type)
+        sql, params = build_sql(_strip_builder_fields(clean_intent), db_type)
         result["sql"] = sql
     except Exception as e:
         result["error"] = (
@@ -186,6 +204,10 @@ def run_pipeline(
         # Infrastructure recovery: reconnect then retry the same SQL
         _is_conn_error = _looks_like_connection_error(first_error)
         if _is_conn_error:
+            # Evict the cached schema for this connection — the reconnect may
+            # land on a different host (e.g. Railway failover) whose schema
+            # should be read fresh rather than served from the stale cache.
+            invalidate_schema_cache(conn, db_type)
             try:
                 fresh_conn = reconnect(credentials or {})
                 # Replace the live connection in the caller's context
@@ -213,7 +235,7 @@ def run_pipeline(
                     result["error_detail"] = errors2
                     return result
                 fixed_intent["_question"] = question
-                fixed_sql, fixed_params = build_sql(fixed_intent, db_type)
+                fixed_sql, fixed_params = build_sql(_strip_builder_fields(fixed_intent), db_type)
                 headers, rows = run_query(conn, fixed_sql, db_type, fixed_params)
                 result["sql"]       = fixed_sql
                 result["intent"]    = fixed_intent
@@ -230,15 +252,6 @@ def run_pipeline(
 
     result["headers"] = headers
     result["rows"]    = [list(r) for r in rows]
-
-    # Summarize results into natural language with a timeout guard
-    try:
-        result["summary"] = summarize(
-            question, rows[:20], headers, model_config,
-            total_rows=len(rows)
-        )
-    except Exception:
-        result["summary"] = ""
 
     # Persist successfully resolved intents to the history store
     memory.add(intent, question)

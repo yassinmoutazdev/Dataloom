@@ -31,27 +31,11 @@ import re
 import sys
 import uuid
 import time
+import threading
 from flask import Flask, request, jsonify, send_from_directory, send_file, session, redirect, url_for
 from dotenv import load_dotenv
 
 load_dotenv()
-
-# ── Railway DATABASE_URL support ──────────────────────────────────
-# Railway injects DATABASE_URL automatically. Parse it into individual
-# env vars so the rest of the app works without changes.
-_db_url = os.getenv("DATABASE_URL", "")
-if _db_url and _db_url.startswith("postgres"):
-    import re as _re
-    _m = _re.match(
-        r"postgres(?:ql)?://([^:]+):([^@]+)@([^:]+):([\d]+)/(.+)", _db_url
-    )
-    if _m:
-        os.environ.setdefault("DB_TYPE",     "postgresql")
-        os.environ.setdefault("DB_USER",     _m.group(1))
-        os.environ.setdefault("DB_PASSWORD", _m.group(2))
-        os.environ.setdefault("DB_HOST",     _m.group(3))
-        os.environ.setdefault("DB_PORT",     _m.group(4))
-        os.environ.setdefault("DB_NAME",     _m.group(5))
 
 from db_connector import (
     connect_with_credentials,
@@ -75,10 +59,6 @@ app.secret_key = os.getenv("FLASK_SECRET", os.urandom(24).hex())
 # ── Security config ───────────────────────────────────────────────
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024   # 16 KB max request body
 
-# DEMO_MODE: set DEMO_MODE=true in .env to lock down the setup route
-# for public deployments — users can query but cannot reconfigure the DB.
-DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() in ("true", "1", "yes")
-
 # Rate limiting: max queries per session per hour
 RATE_LIMIT          = int(os.getenv("RATE_LIMIT", "20"))
 RATE_LIMIT_WINDOW   = 3600   # seconds
@@ -90,23 +70,162 @@ _session_store: dict[str, dict] = {}
 # ── Model config ──────────────────────────────────────────────────
 
 def _default_model_config() -> dict:
+    """
+    Return a model config seeded from environment variables.
+
+    Priority order (highest → lowest):
+      1. Session model_config  — set by POST /api/setup/model (step 4 of the
+         setup wizard). Already stored directly on sess["model_config"], so
+         this function is never re-called for an established session.
+      2. Env vars (MODEL_PROVIDER / *_API_KEY / *_MODEL)  — legacy / headless
+         deployments that skip the setup wizard.
+
+    Because _get_session() only calls this function once (when creating a brand-
+    new session entry), any subsequent /api/setup/model call that updates
+    sess["model_config"] in-place automatically takes precedence.
+    """
     provider = os.getenv("MODEL_PROVIDER", "ollama").lower()
     if provider == "openai":
-        return {
-            "provider": "openai",
-            "model":    os.getenv("OPENAI_MODEL", "gpt-4o"),
-            "api_key":  os.getenv("OPENAI_API_KEY", ""),
-        }
+        _m = os.getenv("OPENAI_MODEL", "gpt-4o")
+        return {"provider": "openai",  "model": _m, "api_key": os.getenv("OPENAI_API_KEY", ""),
+                "pinned_models": [_m]}
     if provider == "gemini":
-        return {
-            "provider": "gemini",
-            "model":    os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite-preview-06-17"),
-            "api_key":  os.getenv("GEMINI_API_KEY", ""),
-        }
-    return {"provider": "ollama", "model": os.getenv("OLLAMA_MODEL", "mistral")}
+        _m = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite-preview-06-17")
+        return {"provider": "gemini",  "model": _m, "api_key": os.getenv("GEMINI_API_KEY", ""),
+                "pinned_models": [_m]}
+    if provider == "anthropic":
+        _m = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
+        return {"provider": "anthropic", "model": _m, "api_key": os.getenv("ANTHROPIC_API_KEY", ""),
+                "pinned_models": [_m]}
+    if provider == "xai":
+        _m = os.getenv("XAI_MODEL", "grok-3-mini")
+        return {"provider": "xai",     "model": _m, "api_key": os.getenv("XAI_API_KEY", ""),
+                "pinned_models": [_m]}
+    if provider == "openrouter":
+        _m = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o")
+        return {"provider": "openrouter", "model": _m, "api_key": os.getenv("OPENROUTER_API_KEY", ""),
+                "pinned_models": [_m]}
+    if provider == "azure":
+        _m = os.getenv("AZURE_OPENAI_DEPLOYMENT", "")
+        return {"provider": "azure",   "model": _m,
+                "api_key": os.getenv("AZURE_OPENAI_API_KEY", ""),
+                "endpoint": os.getenv("AZURE_OPENAI_ENDPOINT", ""),
+                "api_version": os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01"),
+                "pinned_models": [_m] if _m else []}
+    _m = os.getenv("OLLAMA_MODEL", "mistral")
+    return {"provider": "ollama", "model": _m,
+            "host": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
+            "pinned_models": [_m]}
+
+
+def _test_model_connection(provider: str, config: dict) -> None:
+    """
+    Fire a minimal live call to verify provider credentials.
+    Raises RuntimeError (or provider SDK exceptions) on failure.
+    API keys are read from *config* only — never from env vars — so this
+    function is safe to call with wizard-supplied credentials before they
+    are persisted to the session.
+    """
+    # ── OpenAI-compatible providers (share the same code path) ────
+    _OAI_COMPAT = {
+        "openai":      None,   # default base_url
+        "gemini":      "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "xai":         "https://api.x.ai/v1",
+        "openrouter":  "https://openrouter.ai/api/v1",
+    }
+    if provider in _OAI_COMPAT:
+        try:
+            import openai as _oai
+        except ImportError:
+            raise RuntimeError("'openai' package not installed.  Run: pip install openai")
+        kwargs: dict = {"api_key": config["api_key"], "timeout": 15.0}
+        if _OAI_COMPAT[provider]:
+            kwargs["base_url"] = _OAI_COMPAT[provider]
+        if provider == "openrouter":
+            kwargs["default_headers"] = {
+                "HTTP-Referer": "https://dataloom.app",
+                "X-Title":      "Dataloom",
+            }
+        client = _oai.OpenAI(**kwargs)
+        client.chat.completions.create(
+            model=config["model"],
+            messages=[{"role": "user", "content": "Reply with: ok"}],
+            max_tokens=5,
+        )
+        return
+
+    if provider == "anthropic":
+        try:
+            import anthropic as _ant
+        except ImportError:
+            raise RuntimeError("'anthropic' package not installed.  Run: pip install anthropic")
+        client = _ant.Anthropic(api_key=config["api_key"])
+        client.messages.create(
+            model=config["model"],
+            max_tokens=5,
+            messages=[{"role": "user", "content": "Reply with: ok"}],
+        )
+        return
+
+    if provider == "azure":
+        try:
+            import openai as _oai
+        except ImportError:
+            raise RuntimeError("'openai' package not installed.  Run: pip install openai")
+        if not config.get("endpoint"):
+            raise RuntimeError("Azure endpoint URL is required")
+        client = _oai.AzureOpenAI(
+            api_key=config["api_key"],
+            azure_endpoint=config["endpoint"],
+            api_version=config.get("api_version", "2024-02-01"),
+            timeout=15.0,
+        )
+        client.chat.completions.create(
+            model=config["model"],
+            messages=[{"role": "user", "content": "Reply with: ok"}],
+            max_tokens=5,
+        )
+        return
+
+    if provider == "ollama":
+        import urllib.request as _req
+        import json as _json
+        host  = config.get("host", "http://localhost:11434").rstrip("/")
+        model = config.get("model", "")
+        if not model:
+            raise RuntimeError("Model name is required")
+        # Verify the host is reachable by hitting /api/tags
+        try:
+            with _req.urlopen(f"{host}/api/tags", timeout=8) as r:
+                body  = _json.loads(r.read())
+                names = [m.get("name", "") for m in body.get("models", [])]
+        except Exception as exc:
+            raise RuntimeError(f"Could not reach Ollama at {host}: {exc}")
+        # Warn if the model isn't present, but don't block (user may have typed a valid alias)
+        clean_names = [n.split(":")[0] for n in names]
+        if names and model.split(":")[0] not in clean_names:
+            raise RuntimeError(
+                f"Model '{model}' not found in Ollama at {host}. "
+                f"Available: {', '.join(names[:8])}"
+            )
+        return
+
+    raise RuntimeError(f"Unknown provider: {provider}")
 
 
 # ── Session helpers ───────────────────────────────────────────────
+
+# ── OPT 3: Background session cleanup ────────────────────────────
+# _purge_stale_sessions() previously ran on every call to _get_session(),
+# adding dict iteration overhead to every hot-path request. With tens of
+# concurrent sessions that's measurable. Moving it to a background timer
+# (every 10 minutes) keeps the hot path clean while still bounding memory.
+#
+# Risk: a stale session may linger up to PURGE_INTERVAL_SECONDS longer
+# than SESSION_TTL_SECONDS before its DB connection is closed. Acceptable
+# at this scale — connections are per-session and already idle by then.
+_PURGE_INTERVAL_SECONDS = 600  # 10 minutes
+
 
 def _purge_stale_sessions():
     cutoff = time.time() - SESSION_TTL_SECONDS
@@ -120,8 +239,21 @@ def _purge_stale_sessions():
         del _session_store[sid]
 
 
+def _schedule_purge():
+    """Run _purge_stale_sessions() on a recurring background timer."""
+    try:
+        _purge_stale_sessions()
+    except Exception:
+        pass  # Never let a background error surface to a request
+    t = threading.Timer(_PURGE_INTERVAL_SECONDS, _schedule_purge)
+    t.daemon = True   # Dies with the process — no shutdown hook needed
+    t.start()
+
+
+_schedule_purge()   # Kick off the first timer at module load
+
+
 def _get_session() -> dict:
-    _purge_stale_sessions()
     sid = session.get("sid")
     if not sid:
         sid = str(uuid.uuid4())
@@ -180,52 +312,10 @@ def _session_is_ready() -> bool:
 
 # ── Page routes ───────────────────────────────────────────────────
 
-def _try_auto_connect():
-    """
-    In DEMO_MODE (or when DATABASE_URL is set), auto-connect the session
-    to the pre-configured database without going through the setup wizard.
-    Called on every request to / before the session is ready.
-    """
-    db_name = os.getenv("DB_NAME")
-    db_type = os.getenv("DB_TYPE", "postgresql")
-    host     = os.getenv("DB_HOST", "localhost")
-    port     = str(os.getenv("DB_PORT", "5432"))
-    user     = os.getenv("DB_USER", "postgres")
-    password = os.getenv("DB_PASSWORD", "")
-
-    if not db_name:
-        return False   # No DB configured — fall through to setup wizard
-
-    try:
-        sess = _get_session()
-        if db_name in sess["contexts"]:
-            sess["active_db"] = db_name
-            return True   # Already connected in this session
-
-        credentials = {
-            "db_type": db_type, "host": host, "port": port,
-            "user": user, "password": password, "dbname": db_name,
-        }
-        conn = connect_with_credentials(db_type, host, port, db_name, user, password)
-        ctx  = _build_context(conn, db_type, credentials)
-        sess["contexts"][db_name] = ctx
-        sess["active_db"] = db_name
-        # Restore any persisted history
-        sid = session.get("sid")
-        if sid:
-            import history_store
-            history_store.restore_into_session(sid, sess["contexts"])
-        return True
-    except Exception:
-        return False
-
-
 @app.route("/")
 def index():
     if not _session_is_ready():
-        # Try auto-connect from environment (Railway / DEMO_MODE)
-        if not _try_auto_connect():
-            return redirect(url_for("setup"))
+        return redirect(url_for("setup"))
     return send_from_directory("templates", "index.html")
 
 
@@ -264,10 +354,6 @@ def setup_discover():
 
 @app.route("/api/setup/connect", methods=["POST"])
 def setup_connect():
-    if DEMO_MODE:
-        return jsonify({
-            "error": "Setup is disabled in demo mode. The database is pre-configured."
-        }), 403
     """Connect to a specific database, load schema, set as active context."""
     data     = request.json or {}
     db_type  = data.get("db_type", "").lower()
@@ -328,6 +414,207 @@ def setup_connect():
         "db_type":      db_type,
         "tables":       len(ctx["schema_map"]),
     })
+
+
+@app.route("/api/setup/model", methods=["POST"])
+def setup_model():
+    """
+    Step 4 of the setup wizard — configure the AI model provider.
+
+    Accepts:  { provider, api_key, model, host, endpoint, api_version }
+    Validates: fires a minimal live LLM call to confirm the credentials work.
+    Stores:   saves to sess["model_config"] (server-side only).
+    Returns:  { success: true, provider, model }  or  { error: "..." }
+
+    Security:
+      - api_key is stored only in the Flask session (server-side dict).
+      - It is NEVER echoed back to the client in this or any subsequent response.
+      - It is NEVER written to disk.
+    """
+    data        = request.json or {}
+    provider    = data.get("provider",    "").lower().strip()
+    api_key     = data.get("api_key",     "").strip()
+    model       = data.get("model",       "").strip()
+    host        = data.get("host",        "http://localhost:11434").strip()
+    endpoint    = data.get("endpoint",    "").strip()   # Azure only
+    api_version = data.get("api_version", "2024-02-01").strip()  # Azure only
+
+    VALID_PROVIDERS = ("openai", "gemini", "anthropic", "xai", "openrouter", "azure", "ollama")
+    if provider not in VALID_PROVIDERS:
+        return jsonify({"error": f"Unknown provider '{provider}'"}), 400
+    if provider not in ("ollama",) and not api_key:
+        return jsonify({"error": "API key is required for this provider"}), 400
+    if provider == "azure" and not endpoint:
+        return jsonify({"error": "Azure endpoint URL is required"}), 400
+    if not model:
+        return jsonify({"error": "Model name is required"}), 400
+
+    # Build a transient config just for the connection test
+    config: dict = {"provider": provider, "model": model}
+    if api_key:
+        config["api_key"] = api_key
+    if provider == "ollama":
+        config["host"] = host or "http://localhost:11434"
+    if provider == "azure":
+        config["endpoint"]    = endpoint
+        config["api_version"] = api_version
+
+    try:
+        _test_model_connection(provider, config)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    # Credentials verified — persist to session (server-side only)
+    sess = _get_session()
+    # Preserve any existing pinned_models; seed with the new active model otherwise.
+    existing_pinned = sess.get("model_config", {}).get("pinned_models", [])
+    config["pinned_models"] = existing_pinned if existing_pinned else [model]
+    if model not in config["pinned_models"]:
+        config["pinned_models"].insert(0, model)
+    sess["model_config"] = config
+
+    # Return success without echoing the api_key back
+    return jsonify({"success": True, "provider": provider, "model": model})
+
+
+@app.route("/api/setup/ollama-models")
+def setup_ollama_models():
+    """
+    Discover locally available Ollama models for a given host.
+    Called by the setup wizard to populate the model chip picker.
+    GET /api/setup/ollama-models?host=http://localhost:11434
+    """
+    import urllib.request as _req
+    import json as _json
+
+    host = (request.args.get("host") or "http://localhost:11434").strip().rstrip("/")
+    try:
+        with _req.urlopen(f"{host}/api/tags", timeout=8) as r:
+            body  = _json.loads(r.read())
+        # Always use the short "name" field (e.g. "gemma3:4b"), not "model" which
+        # may carry a versioned "@1.0.0" suffix that Ollama's chat API rejects.
+        names = [m.get("name", "") for m in body.get("models", []) if m.get("name")]
+        return jsonify({"models": names})
+    except Exception as exc:
+        return jsonify({"error": f"Could not reach Ollama at {host}: {exc}"}), 400
+
+
+@app.route("/api/setup/provider-models", methods=["POST"])
+def setup_provider_models():
+    """
+    Fetch the live model list for a provider using wizard-supplied credentials.
+    Called during step 4 (before /api/setup/model) so the model dropdown
+    can be populated with real data before the user clicks "Test connection".
+
+    Accepts:  { provider, api_key, endpoint?, api_version? }
+    Returns:  { models: [...], source: "live" | "fallback" }
+
+    The api_key is used here only for the request and is NOT stored.
+    """
+    import json as _json
+
+    FALLBACK: dict[str, list[str]] = {
+        "openai":     ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+        "gemini":     ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
+                       "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+        "anthropic":  ["claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5",
+                       "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
+        "xai":        ["grok-3", "grok-3-mini", "grok-3-fast", "grok-2-1212"],
+        "openrouter": ["openai/gpt-4o", "openai/gpt-4o-mini",
+                       "anthropic/claude-sonnet-4-5", "anthropic/claude-haiku-4-5",
+                       "google/gemini-2.5-flash", "meta-llama/llama-3.3-70b-instruct",
+                       "mistralai/mistral-7b-instruct"],
+        "azure":      [],   # deployment names are instance-specific
+    }
+
+    data        = request.json or {}
+    provider    = data.get("provider", "").lower().strip()
+    api_key     = data.get("api_key",  "").strip()
+    endpoint    = data.get("endpoint", "").strip()
+    api_version = data.get("api_version", "2024-02-01").strip()
+
+    if provider not in FALLBACK and provider != "ollama":
+        return jsonify({"error": f"Unknown provider '{provider}'"}), 400
+
+    fallback = FALLBACK.get(provider, [])
+
+    # ── Anthropic: no public models endpoint yet ──────────────────
+    if provider == "anthropic":
+        return jsonify({"models": fallback, "source": "fallback"})
+
+    # ── Azure: deployment names are user-defined, no global list ──
+    if provider == "azure":
+        return jsonify({"models": [], "source": "none",
+                        "hint": "Enter your deployment name in the field below"})
+
+    # ── OpenAI-compatible providers ───────────────────────────────
+    _OAI_BASE = {
+        "openai":     None,
+        "xai":        "https://api.x.ai/v1",
+        "openrouter": "https://openrouter.ai/api/v1",
+    }
+
+    if provider in _OAI_BASE:
+        if not api_key:
+            return jsonify({"models": fallback, "source": "fallback"})
+        try:
+            import openai as _oai
+            kwargs: dict = {"api_key": api_key, "timeout": 10.0}
+            if _OAI_BASE[provider]:
+                kwargs["base_url"] = _OAI_BASE[provider]
+            if provider == "openrouter":
+                kwargs["default_headers"] = {
+                    "HTTP-Referer": "https://dataloom.app",
+                    "X-Title":      "Dataloom",
+                }
+            client = _oai.OpenAI(**kwargs)
+            raw_models = list(client.models.list())
+
+            if provider == "openai":
+                # Keep only chat-capable models; exclude embeddings/audio/image
+                CHAT_PREFIXES = ("gpt-", "o1", "o3", "o4", "chatgpt-")
+                names = sorted(
+                    [m.id for m in raw_models
+                     if any(m.id.startswith(p) for p in CHAT_PREFIXES)],
+                    reverse=True,
+                )
+            elif provider == "openrouter":
+                # OpenRouter model IDs are "provider/model-name"
+                names = sorted([m.id for m in raw_models])
+            else:
+                # xAI
+                names = sorted([m.id for m in raw_models], reverse=True)
+
+            return jsonify({"models": names or fallback,
+                            "source": "live" if names else "fallback"})
+        except Exception:
+            return jsonify({"models": fallback, "source": "fallback"})
+
+    # ── Gemini: use the REST models list endpoint ─────────────────
+    if provider == "gemini":
+        if not api_key:
+            return jsonify({"models": fallback, "source": "no_key"})
+        try:
+            import urllib.request as _req
+            url  = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            with _req.urlopen(url, timeout=10) as r:
+                body = _json.loads(r.read())
+            # Accept both generateContent and streamGenerateContent — newer models
+            # may only list streamGenerateContent in supportedGenerationMethods.
+            names = [
+                m["name"].replace("models/", "")
+                for m in body.get("models", [])
+                if any(method in m.get("supportedGenerationMethods", [])
+                       for method in ("generateContent", "streamGenerateContent"))
+            ]
+            names = sorted(names, reverse=True)
+            return jsonify({"models": names or fallback,
+                            "source": "live" if names else "fallback"})
+        except Exception as exc:
+            return jsonify({"models": fallback, "source": "fallback",
+                            "error": str(exc)})
+
+    return jsonify({"models": fallback, "source": "fallback"})
 
 
 # ── Database management API ───────────────────────────────────────
@@ -427,10 +714,6 @@ def api_export():
 @app.route("/api/query", methods=["POST"])
 def query():
     ctx = _get_active_context()
-    if not ctx:
-        # Silent auto-reconnect — handles Railway session expiry without page refresh
-        _try_auto_connect()
-        ctx = _get_active_context()
     if not ctx:
         return jsonify({"error": "No database connected. Please complete setup."}), 400
 
@@ -586,23 +869,162 @@ def status():
 
 @app.route("/api/models")
 def models():
+    """
+    Return only the user's pinned model list for the active session.
+    Zero API calls — instant session read.
+    The full provider catalog is available via GET /api/models/catalog.
+    """
+    sess    = _get_session()
+    cfg     = sess["model_config"]
+    current = cfg.get("model")
+    pinned  = cfg.get("pinned_models")
+
+    # Back-compat: sessions created before pinned_models existed
+    if not pinned:
+        pinned = [current] if current else []
+        cfg["pinned_models"] = pinned
+
+    # Guarantee the active model is always visible
+    if current and current not in pinned:
+        pinned = [current] + pinned
+        cfg["pinned_models"] = pinned
+
+    return jsonify({"models": pinned, "current": current})
+
+
+@app.route("/api/models/catalog")
+def models_catalog():
+    """
+    Return the full live model catalog for the active session's provider.
+    Also returns the current pinned list so the frontend can render eye-toggles.
+    Called only when the user opens the Manage Models panel — never on dropdown open.
+    """
+    import json as _json
+
     sess     = _get_session()
-    provider = sess["model_config"].get("provider", "ollama")
-    if provider != "ollama":
-        current = sess["model_config"].get("model")
-        return jsonify({"models": [current], "current": current})
-    try:
-        import ollama as _ollama
-        response = _ollama.list()
-        if hasattr(response, "models"):
-            names = [m.model for m in response.models]
-        elif isinstance(response, dict):
-            names = [m.get("name") or m.get("model", "") for m in response.get("models", [])]
-        else:
-            names = []
-        return jsonify({"models": names, "current": sess["model_config"].get("model")})
-    except Exception:
-        return jsonify({"models": [], "error": "Could not reach Ollama"}), 500
+    cfg      = sess["model_config"]
+    provider = cfg.get("provider", "ollama")
+    current  = cfg.get("model")
+    pinned   = cfg.get("pinned_models", [current] if current else [])
+
+    FALLBACK: dict[str, list[str]] = {
+        "openai":     ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+        "gemini":     ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
+                       "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+        "anthropic":  ["claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5",
+                       "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
+        "xai":        ["grok-3", "grok-3-mini", "grok-3-fast", "grok-2-1212"],
+        "openrouter": ["openai/gpt-4o", "openai/gpt-4o-mini",
+                       "anthropic/claude-sonnet-4-5", "anthropic/claude-haiku-4-5",
+                       "google/gemini-2.5-flash", "meta-llama/llama-3.3-70b-instruct",
+                       "mistralai/mistral-7b-instruct"],
+        "azure":      [],
+    }
+    fallback = FALLBACK.get(provider, [])
+
+    def _resp(all_models: list) -> dict:
+        # Ensure active model present; merge pinned into catalog if custom
+        merged = list(all_models)
+        for m in pinned:
+            if m and m not in merged:
+                merged.insert(0, m)
+        return {"models": merged, "current": current, "pinned": pinned,
+                "provider": provider}
+
+    if provider == "anthropic":
+        return jsonify(_resp(fallback))
+
+    if provider == "azure":
+        return jsonify(_resp([current] if current else []))
+
+    _OAI_BASE = {
+        "openai":     None,
+        "xai":        "https://api.x.ai/v1",
+        "openrouter": "https://openrouter.ai/api/v1",
+    }
+    if provider in _OAI_BASE and cfg.get("api_key"):
+        try:
+            import openai as _oai
+            kwargs: dict = {"api_key": cfg["api_key"], "timeout": 12.0}
+            if _OAI_BASE[provider]:
+                kwargs["base_url"] = _OAI_BASE[provider]
+            if provider == "openrouter":
+                kwargs["default_headers"] = {
+                    "HTTP-Referer": "https://dataloom.app",
+                    "X-Title":      "Dataloom",
+                }
+            raw = list(_oai.OpenAI(**kwargs).models.list())
+            if provider == "openai":
+                CHAT_PREFIXES = ("gpt-", "o1", "o3", "o4", "chatgpt-")
+                names = sorted(
+                    [m.id for m in raw if any(m.id.startswith(p) for p in CHAT_PREFIXES)],
+                    reverse=True)
+            else:
+                names = sorted([m.id for m in raw], reverse=True)
+            return jsonify(_resp(names or fallback))
+        except Exception:
+            pass
+
+    if provider == "gemini" and cfg.get("api_key"):
+        try:
+            import urllib.request as _req
+            url = (f"https://generativelanguage.googleapis.com/v1beta/models"
+                   f"?key={cfg['api_key']}")
+            with _req.urlopen(url, timeout=12) as r:
+                body = _json.loads(r.read())
+            names = sorted([
+                m["name"].replace("models/", "")
+                for m in body.get("models", [])
+                if any(method in m.get("supportedGenerationMethods", [])
+                       for method in ("generateContent", "streamGenerateContent"))
+            ], reverse=True)
+            return jsonify(_resp(names or fallback))
+        except Exception:
+            pass
+
+    if provider == "ollama":
+        try:
+            import urllib.request as _req2
+            host2 = cfg.get("host", "http://localhost:11434").rstrip("/")
+            with _req2.urlopen(f"{host2}/api/tags", timeout=10) as r:
+                body2 = _json.loads(r.read())
+            names = [m.get("name", "") for m in body2.get("models", []) if m.get("name")]
+            return jsonify(_resp(names))
+        except Exception as exc:
+            return jsonify(_resp([]) | {"error": f"Could not reach Ollama: {exc}"})
+
+    return jsonify(_resp(fallback))
+
+
+@app.route("/api/models/pin", methods=["POST"])
+def pin_model():
+    """Add a model to the session's pinned list."""
+    data  = request.json or {}
+    model = data.get("model", "").strip()
+    if not model:
+        return jsonify({"error": "model required"}), 400
+    sess   = _get_session()
+    cfg    = sess["model_config"]
+    pinned = cfg.setdefault("pinned_models", [cfg.get("model", "")])
+    if model not in pinned:
+        pinned.append(model)
+    return jsonify({"pinned": pinned})
+
+
+@app.route("/api/models/unpin", methods=["POST"])
+def unpin_model():
+    """Remove a model from the session's pinned list. The active model cannot be unpinned."""
+    data  = request.json or {}
+    model = data.get("model", "").strip()
+    if not model:
+        return jsonify({"error": "model required"}), 400
+    sess    = _get_session()
+    cfg     = sess["model_config"]
+    current = cfg.get("model")
+    if model == current:
+        return jsonify({"error": "Cannot unpin the active model"}), 400
+    cfg["pinned_models"] = [m for m in cfg.get("pinned_models", []) if m != model]
+    return jsonify({"pinned": cfg["pinned_models"]})
 
 
 @app.route("/api/schema/descriptions", methods=["GET", "POST"])
@@ -648,13 +1070,17 @@ def schema_descriptions():
 
 @app.route("/api/model", methods=["POST"])
 def set_model():
-    """Switch the active model for this session."""
+    """Switch the active model for this session. Auto-pins the model if not already pinned."""
     data  = request.json or {}
     model = data.get("model", "").strip()
     if not model:
         return jsonify({"error": "No model specified"}), 400
-    sess = _get_session()
-    sess["model_config"]["model"] = model
+    sess   = _get_session()
+    cfg    = sess["model_config"]
+    cfg["model"] = model
+    pinned = cfg.setdefault("pinned_models", [])
+    if model not in pinned:
+        pinned.append(model)
     return jsonify({"model": model})
 
 

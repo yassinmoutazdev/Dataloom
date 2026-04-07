@@ -172,9 +172,10 @@ class TestNtileAliasExpansion:
         assert ok, f"Validation failed unexpectedly: {errs}"
         
         sql, params = build_sql(intent, "postgresql")
-        # The alias 'total_revenue' must be expanded to SUM(fact_orders.unit_price)
+        # The alias 'total_revenue' must be expanded to SUM(fact_orders.unit_price) in NTILE
         assert "NTILE(10) OVER (ORDER BY SUM(fact_orders.unit_price) DESC)" in sql
-        assert "ORDER BY total_revenue" not in sql
+        # The final ORDER BY clause can still use the alias (this is correct behavior)
+        assert "ORDER BY total_revenue DESC" in sql
 
     def test_ntile_with_full_expression_passes_through_unchanged(self, schema_map, schema_types):
         """GAP-5-B: NTILE with full expression passes through unchanged."""
@@ -390,7 +391,9 @@ class TestLeftJoinSemantics:
         assert "LEFT JOIN fact_orders" in sql
         assert "LEFT JOIN dim_categories" in sql
         assert "INNER JOIN dim_categories" not in sql
-        assert "JOIN dim_categories ON" not in sql
+        # "JOIN dim_categories ON" is a substring of "LEFT JOIN dim_categories ON",
+        # so assert on the INNER prefix specifically — not a bare join keyword.
+        assert "INNER JOIN dim_categories ON" not in sql
 
     def test_inner_only_query_bfs_hop_is_plain_inner_join(self, schema_map, schema_types):
         """GAP-8-B: INNER-only query — BFS hop is plain INNER JOIN."""

@@ -10,9 +10,60 @@ import os
 
 DESCRIPTIONS_FILE = "schema_descriptions.json"
 
+# ── OPT 1: In-memory schema cache ────────────────────────────────────────────
+# Schema reads are cheap but not free — each one fires several queries against
+# information_schema / PRAGMA. On Railway (or any container host), sessions
+# are frequently torn down and recreated. Without caching, every new session
+# re-reads a schema that hasn't changed.
+#
+# Cache key: (db_type, host_or_path, port, dbname)
+# Cache value: (schema_text, schema_map, schema_types, join_paths)
+#
+# Invalidation: call invalidate_schema_cache(key) when a connection error
+# is detected in core.py. The next get_schema() call will rebuild from DB.
+# Risk: stale cache if schema changes (ALTER TABLE, etc.) mid-session.
+# Mitigation: the /api/schema/descriptions POST route already calls get_schema()
+# directly; operators can also restart the process to force a full rebuild.
+_SCHEMA_CACHE: dict[tuple, tuple] = {}
+
+
+def _make_cache_key(conn, db_type: str) -> tuple | None:
+    """Derive a stable cache key from the live connection object.
+
+    Returns None if the key cannot be determined (safe fallback: skip cache).
+    """
+    try:
+        if db_type == "postgresql":
+            info = conn.info
+            return (db_type, info.host or "", str(info.port or ""), info.dbname or "")
+        elif db_type == "mysql":
+            return (db_type, conn.server_host or "", str(conn.server_port or ""), conn.database or "")
+        elif db_type == "sqlite":
+            row = conn.execute("PRAGMA database_list").fetchone()
+            # row = (seq, name, file) — file is the path, or "" for :memory:
+            path = row[2] if row else ""
+            return (db_type, path, "", "")
+    except Exception:
+        return None
+
+
+def invalidate_schema_cache(conn, db_type: str) -> None:
+    """Remove a cached schema entry when a connection error is detected.
+
+    Called by core.py after a connection failure so the next session
+    gets a fresh schema read rather than potentially stale cached data.
+    """
+    key = _make_cache_key(conn, db_type)
+    if key:
+        _SCHEMA_CACHE.pop(key, None)
+
 
 def get_schema(conn, db_type: str = "postgresql") -> tuple[str, dict, dict, dict]:
     """Retrieve database schema information for a given connection and database type.
+
+    Results are cached in-memory by (db_type, host, port, dbname) so that
+    container restarts and session expiry do not trigger repeated schema reads
+    against an unchanged database.
 
     Args:
         conn: The database connection object (e.g., psycopg2, mysql.connector, sqlite3 connection).
@@ -28,17 +79,26 @@ def get_schema(conn, db_type: str = "postgresql") -> tuple[str, dict, dict, dict
             - join_paths (dict): A dictionary representing foreign key relationships, structured as
               {source_table: {target_table: "source_table.col = target_table.col"}}.
     """
+    cache_key = _make_cache_key(conn, db_type)
+    if cache_key and cache_key in _SCHEMA_CACHE:
+        return _SCHEMA_CACHE[cache_key]
+
     descriptions = {}
     if os.path.exists(DESCRIPTIONS_FILE):
         with open(DESCRIPTIONS_FILE, "r") as f:
             descriptions = json.load(f)
 
     if db_type == "sqlite":
-        return _get_schema_sqlite(conn, descriptions)
+        result = _get_schema_sqlite(conn, descriptions)
     elif db_type == "mysql":
-        return _get_schema_mysql(conn, descriptions)
+        result = _get_schema_mysql(conn, descriptions)
     else:
-        return _get_schema_postgresql(conn, descriptions)
+        result = _get_schema_postgresql(conn, descriptions)
+
+    if cache_key:
+        _SCHEMA_CACHE[cache_key] = result
+
+    return result
 
 
 def _get_schema_postgresql(conn, descriptions: dict) -> tuple[str, dict, dict, dict]:

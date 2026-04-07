@@ -1,6 +1,14 @@
-# =============================================================================
-# sql_builder.py  —  Dataloom v3.0  (Sprint 4A)
-#
+"""
+SQL generation layer for the Dataloom query pipeline (v3.0, Sprint 4A).
+
+Owns the translation from a validated intent dict to a parameterised SQL string.
+Handles dialect differences for PostgreSQL, MySQL, and SQLite. Depends on
+normalize_joins() and normalize_metrics() from validator.py.
+
+Public API:
+    build_sql(intent, db_type) → (sql_string, params_list)
+"""
+
 # Sprint 4A additions (marked with # 4A-N):
 #   4A-1  IS NULL / IS NOT NULL — no placeholder emitted
 #   4A-2  Typed JOINs: LEFT / RIGHT / FULL keyword rendering
@@ -9,11 +17,11 @@
 #   4A-5  NTILE and PERCENTILE_CONT rendering (with SQLite fallback)
 #   4A-6  Standalone HAVING aggregation (COUNT DISTINCT not in SELECT)
 #   4A-7  computed_columns[] → CASE WHEN … END AS alias in SELECT
-# =============================================================================
 
 import re
 from validator import normalize_joins, normalize_metrics, _join_condition, _join_type
 
+# Words that signal the user wants results ranked or sorted by the primary metric.
 RANKING_KEYWORDS = [
     "top", "most", "highest", "lowest", "best", "worst",
     "ranked", "leading", "bottom", "least",
@@ -23,6 +31,7 @@ MAX_GROUP_LIMIT = 5000   # safety cap for grouped queries
 
 # ── Dialect maps ──────────────────────────────────────────────────────────────
 
+# Dialect-specific SQL expressions for relative time range boundaries in WHERE clauses.
 TIME_RANGE_SQL = {
     "postgresql": {
         "last_7_days":  "CURRENT_DATE - INTERVAL '7 days'",
@@ -47,6 +56,7 @@ TIME_RANGE_SQL = {
     },
 }
 
+# Dialect-specific date truncation expressions used for time_bucket GROUP BY columns.
 DATE_BUCKET_SQL = {
     "postgresql": {
         "day":     "DATE_TRUNC('day',     {col})",
@@ -126,6 +136,7 @@ DATE_ARITH_SQL = {
     },
 }
 
+# Readable alias prefixes used when the metric name is a bare aggregation keyword.
 AGG_PREFIX = {
     "SUM": "total", "AVG": "avg", "COUNT": "total",
     "MAX": "max",   "MIN": "min",
@@ -366,9 +377,12 @@ def build_sql(intent: dict, db_type: str = "postgresql") -> tuple[str, list]:
     elif order_by:
         order_alias = _resolve_order_alias(order_by, compiled, primary["alias"])
         clean       = _clean_order_by(order_alias, primary["alias"])
+        # Expand the resolved alias to its full aggregation expression so ORDER BY
+        # is always in canonical form (e.g. SUM(fact_orders.unit_price) not total_revenue).
+        order_expr  = _alias_to_agg_expr(clean, compiled, clean)
         order_clause = (
             "" if not effective_group and clean != primary["alias"]
-            else f"ORDER BY {clean} {order_dir}"
+            else f"ORDER BY {order_expr} {order_dir}"
         )
     elif effective_group:
         order_clause = (
@@ -496,6 +510,10 @@ def _compile_metrics(metrics: list, fact_table: str, db_type: str = "postgresql"
                     q = col if "." in col else f"{fact_table}.{col}"
                     agg_expr = f"COUNT(DISTINCT {q})"
                 else:
+                    # COUNT(*) is the canonical form for row counting.
+                    # COUNT(col) is only emitted for COUNT DISTINCT — a plain
+                    # COUNT(col) silently skips NULLs and diverges from
+                    # COUNT(*) semantics, so we never emit it implicitly.
                     agg_expr = "COUNT(*)"
             else:
                 q = col if "." in col else f"{fact_table}.{col}"
@@ -728,6 +746,20 @@ def _resolve_order_alias(order_by: str, compiled: list, fallback: str) -> str:
     for c in compiled:
         if ob_norm in c["alias"].lower() or c["alias"].lower() in ob_norm:
             return c["alias"]
+    return fallback
+
+
+def _alias_to_agg_expr(alias: str, compiled: list, fallback: str) -> str:
+    """Resolve a metric alias to its full aggregation expression.
+
+    Used to produce canonical ORDER BY clauses (e.g. ORDER BY SUM(fact_orders.unit_price))
+    instead of alias-based ones (ORDER BY total_revenue), ensuring consistent SQL
+    semantics across all clauses regardless of how the LLM named the metric.
+    Falls back to ``fallback`` when the alias does not match any compiled metric.
+    """
+    for c in compiled:
+        if c["alias"] == alias:
+            return c["agg_expr"]
     return fallback
 
 

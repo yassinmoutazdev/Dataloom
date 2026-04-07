@@ -318,6 +318,320 @@
   }
   .model-option.current .model-option-check { display: block; color: var(--accent); }
 
+  /* ── Scrollable model list inside dropdown ──────────────────── */
+  .model-list-scroll {
+    max-height: 300px; overflow-y: auto; overflow-x: hidden;
+    scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent;
+  }
+  .model-list-scroll::-webkit-scrollbar { width: 3px; }
+  .model-list-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  .model-dropdown-footer { border-top: 1px solid var(--border); padding-top: 3px; margin-top: 3px; }
+  .model-footer-row {
+    padding: 6px 10px; border-radius: var(--radius-sm);
+    font-size: 12px; color: var(--text-dim);
+    cursor: pointer; transition: all var(--transition);
+    display: flex; align-items: center; gap: 7px;
+  }
+  .model-footer-row:hover { background: rgba(255,255,255,0.04); color: var(--text-secondary); }
+  .model-footer-divider { height: 1px; background: var(--border); margin: 2px 0; }
+
+  /* ── Manage models modal backdrop ───────────────────────────── */
+  .mgmt-backdrop {
+    position: fixed; inset: 0; z-index: 1010;
+    background: rgba(4,6,12,0.75); backdrop-filter: blur(6px);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
+  }
+  .mgmt-backdrop.open { opacity: 1; pointer-events: all; }
+  .mgmt-card {
+    background: var(--bg-card); border: 1px solid var(--border-md);
+    border-radius: var(--radius-xl); width: 100%; max-width: 480px; max-height: 88vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.025) inset;
+    transform: translateY(10px); transition: transform 0.22s ease;
+  }
+  .mgmt-backdrop.open .mgmt-card { transform: translateY(0); }
+
+  /* ── Shared manage-models chrome (used in modal AND settings tab) */
+  .mgmt-panel-header {
+    padding: 18px 18px 12px; display: flex; align-items: flex-start;
+    justify-content: space-between; flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .mgmt-title {
+    font-family: "Syne", sans-serif; font-size: 15px; font-weight: 700;
+    letter-spacing: -0.3px; color: var(--text-primary);
+  }
+  .mgmt-subtitle { font-size: 12px; color: var(--text-secondary); margin-top: 2px; font-weight: 300; }
+  .mgmt-header-actions { display: flex; align-items: center; gap: 8px; }
+  .mgmt-provider-link {
+    font-size: 11.5px; color: var(--text-dim); cursor: pointer;
+    transition: color var(--transition); white-space: nowrap;
+  }
+  .mgmt-provider-link:hover { color: var(--accent); }
+  .mgmt-close {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    color: var(--text-secondary); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; transition: all var(--transition); flex-shrink: 0;
+  }
+  .mgmt-close:hover { background: var(--error-dim); border-color: rgba(239,68,68,0.3); color: var(--error); }
+  .mgmt-search-wrap { padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .mgmt-search {
+    width: 100%; background: var(--bg-elevated);
+    border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+    padding: 7px 11px 7px 30px; color: var(--text-primary);
+    font-family: "DM Sans", sans-serif; font-size: 13px; outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 13 13' fill='none'%3E%3Ccircle cx='5.5' cy='5.5' r='4' stroke='%23394057' stroke-width='1.3'/%3E%3Cpath d='M9 9l2.5 2.5' stroke='%23394057' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: 10px center;
+  }
+  .mgmt-search::placeholder { color: var(--text-dim); }
+  .mgmt-search:focus { border-color: var(--accent-border); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .mgmt-list {
+    flex: 1; overflow-y: auto; padding: 6px 8px;
+    scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent;
+  }
+  .mgmt-list::-webkit-scrollbar { width: 3px; }
+  .mgmt-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  .mgmt-section-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.7px;
+    color: var(--text-dim); font-weight: 600; padding: 5px 8px 3px;
+  }
+  .mgmt-section-sep { height: 1px; background: var(--border); margin: 5px 0; }
+  .mgmt-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: var(--radius-sm);
+    cursor: pointer; transition: background var(--transition);
+  }
+  .mgmt-item:hover { background: rgba(255,255,255,0.04); }
+  .mgmt-item-name {
+    flex: 1; font-size: 13px; color: var(--text-secondary);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .mgmt-item.is-active .mgmt-item-name { color: var(--text-primary); }
+  .mgmt-item-badge {
+    font-size: 10px; padding: 2px 7px; border-radius: 10px;
+    background: var(--accent-dim); color: var(--accent);
+    border: 1px solid var(--accent-border); white-space: nowrap; flex-shrink: 0;
+  }
+  .mgmt-eye-btn {
+    width: 26px; height: 26px; border-radius: var(--radius-sm);
+    background: transparent; border: none; color: var(--text-dim);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: all var(--transition); padding: 0;
+  }
+  .mgmt-eye-btn:hover { background: rgba(255,255,255,0.06); color: var(--text-secondary); }
+  .mgmt-eye-btn.pinned { color: var(--accent); }
+  .mgmt-eye-btn.locked { opacity: 0.3; cursor: default; pointer-events: none; }
+  .mgmt-loading {
+    display: flex; align-items: center; justify-content: center;
+    padding: 32px; gap: 10px; font-size: 13px; color: var(--text-dim);
+  }
+  .mgmt-spinner {
+    width: 14px; height: 14px;
+    border: 1.5px solid rgba(255,255,255,0.1); border-top-color: var(--accent);
+    border-radius: 50%; animation: mgmtSpin 0.7s linear infinite; flex-shrink: 0;
+  }
+  @keyframes mgmtSpin { to { transform: rotate(360deg); } }
+  .mgmt-error-msg {
+    padding: 12px 14px; margin: 8px;
+    background: var(--error-dim); border: 1px solid rgba(239,68,68,0.2);
+    border-radius: var(--radius-sm); font-size: 12.5px; color: #FCA5A5;
+  }
+  .mgmt-footer { padding: 10px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
+  .mgmt-add-row { display: flex; gap: 7px; align-items: center; }
+  .mgmt-add-input {
+    flex: 1; background: var(--bg-elevated); border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm); padding: 7px 11px;
+    color: var(--text-primary); font-family: "DM Mono", monospace;
+    font-size: 12.5px; outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+  .mgmt-add-input::placeholder { color: var(--text-dim); font-family: "DM Sans", sans-serif; }
+  .mgmt-add-input:focus { border-color: var(--accent-border); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .mgmt-add-btn {
+    background: var(--bg-elevated); border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text-secondary);
+    font-size: 12px; font-weight: 500; padding: 7px 14px;
+    cursor: pointer; white-space: nowrap;
+    font-family: "DM Sans", sans-serif; transition: all var(--transition);
+  }
+  .mgmt-add-btn:hover { border-color: var(--accent-border); color: var(--accent); }
+  .mgmt-add-hint { font-size: 11px; color: var(--text-dim); margin-top: 5px; }
+
+  /* ── Model config modal ─────────────────────────────────────── */
+  .mcfg-backdrop {
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(4,6,12,0.72);
+    backdrop-filter: blur(6px);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  .mcfg-backdrop.open { opacity: 1; pointer-events: all; }
+  .mcfg-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-md);
+    border-radius: var(--radius-xl);
+    padding: 28px 28px 24px;
+    width: 100%; max-width: 460px;
+    max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.025) inset;
+    transform: translateY(10px);
+    transition: transform 0.22s ease;
+    scrollbar-width: thin;
+  }
+  .mcfg-backdrop.open .mcfg-card { transform: translateY(0); }
+  .mcfg-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .mcfg-title {
+    font-family: "Syne", sans-serif;
+    font-size: 17px; font-weight: 700;
+    letter-spacing: -0.3px; color: var(--text-primary);
+  }
+  .mcfg-subtitle {
+    font-size: 12.5px; color: var(--text-secondary);
+    margin-top: 2px; font-weight: 300;
+  }
+  .mcfg-close {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    color: var(--text-secondary); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; line-height: 1;
+    transition: all var(--transition); flex-shrink: 0;
+  }
+  .mcfg-close:hover { background: var(--error-dim); border-color: rgba(239,68,68,0.3); color: var(--error); }
+  .mcfg-field { margin-bottom: 13px; }
+  .mcfg-label {
+    display: block; font-size: 11px; font-weight: 500;
+    letter-spacing: 0.5px; text-transform: uppercase;
+    color: var(--text-secondary); margin-bottom: 6px;
+  }
+  .mcfg-input {
+    width: 100%;
+    background: var(--bg-elevated);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    color: var(--text-primary);
+    font-family: "DM Mono", monospace;
+    font-size: 12.5px; outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
+    appearance: none;
+  }
+  .mcfg-input::placeholder { color: var(--text-dim); font-family: "DM Sans", sans-serif; }
+  .mcfg-input:focus { border-color: var(--accent-border); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .mcfg-select-arrow {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%238B93A7' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 11px center;
+    padding-right: 30px !important;
+    cursor: pointer;
+  }
+  .mcfg-select-arrow option { background: #131720; color: var(--text-primary); }
+  .mcfg-row { display: flex; gap: 7px; align-items: flex-end; }
+  .mcfg-row .mcfg-input { flex: 1; }
+  .mcfg-load-btn {
+    background: var(--bg-elevated); border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text-secondary);
+    font-size: 11px; font-weight: 500; padding: 0 11px; height: 36px;
+    cursor: pointer; white-space: nowrap;
+    display: flex; align-items: center; gap: 5px;
+    font-family: "DM Sans", sans-serif; flex-shrink: 0;
+    transition: all var(--transition);
+  }
+  .mcfg-load-btn:hover { border-color: var(--accent-border); color: var(--accent); }
+  .mcfg-load-btn:disabled { opacity: 0.45; pointer-events: none; }
+  .mcfg-hint { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .mcfg-hint.live { color: var(--success); }
+  .mcfg-discover-row { display: flex; gap: 7px; align-items: flex-end; margin-bottom: 10px; }
+  .mcfg-discover-row .mcfg-input { flex: 1; }
+  .mcfg-discover-btn {
+    background: var(--bg-elevated); border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text-secondary);
+    font-size: 11.5px; font-weight: 500; padding: 9px 14px;
+    cursor: pointer; white-space: nowrap;
+    display: flex; align-items: center; gap: 6px;
+    font-family: "DM Sans", sans-serif; flex-shrink: 0;
+    transition: all var(--transition);
+  }
+  .mcfg-discover-btn:hover { border-color: var(--accent-border); color: var(--accent); }
+  .mcfg-discover-btn:disabled { opacity: 0.45; pointer-events: none; }
+  .mcfg-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .mcfg-chip {
+    padding: 5px 12px; border-radius: 20px;
+    border: 1.5px solid var(--border); background: var(--bg-elevated);
+    font-size: 11.5px; font-weight: 500; color: var(--text-secondary);
+    cursor: pointer; transition: all 0.15s ease;
+    font-family: "DM Mono", monospace;
+  }
+  .mcfg-chip:hover { border-color: var(--border-md); color: var(--text-primary); }
+  .mcfg-chip.selected { border-color: var(--accent-border); background: var(--accent-dim); color: var(--accent); }
+  .mcfg-pfields { display: none; }
+  .mcfg-pfields.show { display: block; animation: mcfgFadeUp 0.18s ease both; }
+  @keyframes mcfgFadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+  .mcfg-test-btn {
+    width: 100%; margin-top: 14px;
+    background: var(--bg-elevated); border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text-secondary);
+    font-size: 12.5px; font-weight: 500; padding: 9px 16px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px;
+    font-family: "DM Sans", sans-serif;
+    transition: all var(--transition);
+  }
+  .mcfg-test-btn:hover { border-color: var(--accent-border); color: var(--accent); }
+  .mcfg-test-btn:disabled { opacity: 0.45; pointer-events: none; }
+  .mcfg-test-btn.ok { border-color: rgba(16,185,129,0.4); color: var(--success); background: var(--success-dim); }
+  .mcfg-result-row {
+    display: none; align-items: center; gap: 9px;
+    padding: 10px 13px; margin-top: 12px;
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); font-size: 12.5px; color: var(--text-secondary);
+  }
+  .mcfg-result-row.show { display: flex; }
+  .mcfg-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .mcfg-dot.ok  { background: var(--success); box-shadow: 0 0 7px var(--success); }
+  .mcfg-dot.err { background: var(--error); }
+  .mcfg-dot.spin { background: var(--accent); animation: mcfgPulse 1s ease infinite; }
+  @keyframes mcfgPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .mcfg-divider { height: 1px; background: var(--border); margin: 18px 0 16px; }
+  .mcfg-save-btn {
+    width: 100%;
+    background: var(--accent); border: none; border-radius: var(--radius-sm);
+    padding: 11px; color: #fff;
+    font-family: "DM Sans", sans-serif; font-size: 13.5px; font-weight: 500;
+    cursor: pointer; transition: background var(--transition);
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+  }
+  .mcfg-save-btn:hover { background: var(--accent-hover); }
+  .mcfg-save-btn:disabled { opacity: 0.45; pointer-events: none; }
+  .mcfg-cancel-link {
+    text-align: center; margin-top: 9px;
+    font-size: 12px; color: var(--text-dim);
+    cursor: pointer; transition: color var(--transition);
+  }
+  .mcfg-cancel-link:hover { color: var(--text-secondary); }
+  .mcfg-spinner {
+    width: 13px; height: 13px;
+    border: 1.5px solid rgba(255,255,255,0.25);
+    border-top-color: #fff; border-radius: 50%;
+    animation: mcfgSpin 0.7s linear infinite; flex-shrink: 0;
+  }
+  @keyframes mcfgSpin { to { transform: rotate(360deg); } }
+  .mcfg-error {
+    padding: 9px 13px; margin-top: 10px;
+    background: var(--error-dim); border: 1px solid rgba(239,68,68,0.2);
+    border-radius: var(--radius-sm); font-size: 12.5px; color: #FCA5A5;
+    display: none; line-height: 1.45;
+  }
+  .mcfg-error.show { display: block; }
+
   /* ═══════════════════════════════════════════════════════════
      MAIN AREA
   ═══════════════════════════════════════════════════════════ */
@@ -478,12 +792,6 @@
     background: var(--error-dim); border: 1px solid rgba(239,68,68,0.2);
     border-radius: var(--radius-sm); padding: 10px 14px;
     font-size: 13.5px; color: #FCA5A5; line-height: 1.5;
-  }
-
-  /* Summary text */
-  .msg-summary {
-    font-size: 14px; line-height: 1.65; color: var(--text-primary);
-    margin-bottom: 10px;
   }
 
   /* SQL toggle */
@@ -979,10 +1287,6 @@
   }
   .conn-switch-btn:hover { border-color: var(--accent-border); color: var(--accent); }
   
-  /* Welcome modal — uses same .open pattern as settings modal */
-  #welcome-overlay { display: flex; }  /* always flex so opacity transition works */
-
-
   /* ═══════════════════════════════════════════════════════════
      RESPONSIVE — MOBILE & TABLET
   ═══════════════════════════════════════════════════════════ */
@@ -1094,9 +1398,6 @@
       overflow-y: auto;
     }
 
-    /* Welcome modal stats: single column */
-    #welcome-overlay .modal { border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important; }
-
     /* Header: hide db badge text on very small screens */
     #header-db-name { max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -1115,12 +1416,6 @@
     .chip { font-size: 11.5px; padding: 6px 10px; }
   }
 
-  /* Welcome modal stats grid responsive */
-  @media (max-width: 400px) {
-    #welcome-overlay [style*="grid-template-columns:1fr 1fr"] {
-      grid-template-columns: 1fr !important;
-    }
-  }
 
 
   /* ── Pull-to-refresh indicator (mobile) ──────────────────────────────── */
@@ -1406,6 +1701,10 @@
         <svg viewBox="0 0 16 16" fill="none"><path d="M3 8a5 5 0 0110 0M8 3v2M8 11v2M3.93 5.93l1.41 1.41M10.66 10.66l1.41 1.41" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
         Connection
       </button>
+      <button class="modal-tab" id="tab-models" onclick="switchTab('models')">
+        <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/><path d="M5 8h6M8 5v6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        Models
+      </button>
     </div>
 
     <div class="modal-body">
@@ -1445,6 +1744,36 @@
         <button class="conn-switch-btn" onclick="closeSettings(); window.location='/setup';">
           Switch Database / Add New
         </button>
+      </div>
+
+      <!-- ── Model Manager (embedded — same engine as standalone modal) ── -->
+      <div class="tab-panel" id="panel-models" style="display:none;flex-direction:column;height:100%;padding:0;margin:-16px;">
+        <div class="mgmt-search-wrap" style="border-top:none;">
+          <input id="settings-model-search" class="mgmt-search" type="text"
+                 placeholder="Search models…"
+                 oninput="mgmtSearchInput(this.value, 'settings-model-list')" />
+        </div>
+        <div class="mgmt-list" id="settings-model-list" style="min-height:180px;max-height:340px;">
+          <!-- filled by JS when tab opens -->
+        </div>
+        <div class="mgmt-footer">
+          <div class="mgmt-add-row">
+            <input id="settings-model-add" class="mgmt-add-input" type="text"
+                   placeholder="Add custom model name (e.g. llama3.1:8b-q4)"
+                   onkeydown="if(event.key==='Enter') mgmtAddCustom('settings-model-list','settings-model-add','settings-model-hint')" />
+            <button class="mgmt-add-btn"
+                    onclick="mgmtAddCustom('settings-model-list','settings-model-add','settings-model-hint')">Pin</button>
+          </div>
+          <div class="mgmt-add-hint" id="settings-model-hint"></div>
+        </div>
+        <div style="padding:8px 14px;border-top:1px solid var(--border);">
+          <button onclick="closeSettings();setTimeout(openModelModal,80);"
+            style="background:none;border:1px solid var(--border);border-radius:var(--radius-sm);
+                   padding:7px 14px;color:var(--text-secondary);font-family:'DM Sans',sans-serif;
+                   font-size:12.5px;cursor:pointer;transition:all var(--transition);width:100%;">
+            ⚡ Change provider / API key
+          </button>
+        </div>
       </div>
 
     </div>
@@ -1595,18 +1924,18 @@ function renderHistory(items) {
     </div>`).join('');
 }
 
-// Starter questions guaranteed to work on the Olist demo database
+// Generic starter questions shown when no query history exists
 const STARTER_QUESTIONS = [
-  'Total revenue by state',
-  'Top 10 product categories by revenue',
-  'Orders placed per month',
-  'Average order value',
-  'Total freight cost by state',
-  'Revenue in 2017',
-  'Top 10 cities by number of orders',
-  'Average delivery time in days',
-  'Which product categories have the most orders',
-  'Monthly revenue trend',
+  'Show all tables',
+  'How many records are in each table',
+  'Show the first 10 rows',
+  'What are the column names',
+  'Count total rows',
+  'Show recent entries',
+  'What is the most common value',
+  'Show a summary of the data',
+  'Find any duplicate records',
+  'Show entries from this month',
 ];
 
 function renderChips(history) {
@@ -1654,31 +1983,466 @@ async function clearHistory() {
  */
 function normalizeModelName(raw) {
   if (!raw) return '—';
-  // Strip everything after the first colon (tags, versions, quantizations)
-  let name = raw.split(':')[0];
-  // Replace hyphens/underscores with spaces
-  name = name.replace(/[-_]/g, ' ');
+
+  // OpenRouter format: "provider/model-name" — strip the provider prefix
+  // e.g. "anthropic/claude-3-5-sonnet" → format just "claude-3-5-sonnet"
+  //      "openai/gpt-4o"               → "gpt-4o"
+  //      "meta-llama/llama-3.3-70b-instruct" → "llama-3.3-70b"
+  let name = raw.includes('/') ? raw.split('/').slice(1).join('/') : raw;
+
+  // Strip everything after the first colon (Ollama tags: "mistral:latest" → "mistral")
+  name = name.split(':')[0];
+
+  // Collapse known long suffixes for display brevity
+  name = name.replace(/-\d{8}$/, '');           // "-20241022" date stamps
+  name = name.replace(/-instruct$/, '');         // "-instruct" suffix
+  name = name.replace(/-preview.*$/, '');        // "-preview-..." suffix
+
+  // Replace hyphens/underscores/dots with spaces
+  name = name.replace(/[-_.]/g, ' ');
+
   // Insert space before digits that follow letters (llama3 → llama 3)
   name = name.replace(/([a-zA-Z])(\d)/g, '$1 $2');
+
   // Capitalize each word
   name = name.replace(/\b\w/g, c => c.toUpperCase());
+
   return name.trim();
 }
 
 function renderModelDropdown(models, current) {
   const el = document.getElementById('model-dropdown');
   const header = '<div class="model-dropdown-header">Model</div>';
-  if (!models.length) {
-    el.innerHTML = header + '<div style="padding:8px 10px;font-size:12.5px;color:var(--text-dim)">No models found</div>';
+  const listItems = models.length
+    ? models.map(m => `
+        <div class="model-option ${m===current?'current':''}" onclick="selectModel(event,'${esc(m)}')">
+          <span>${normalizeModelName(m)}</span>
+          <svg class="model-option-check" viewBox="0 0 13 13" fill="none">
+            <path d="M2 7l3.5 3.5L11 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>`).join('')
+    : '<div style="padding:8px 10px;font-size:12.5px;color:var(--text-dim)">No models pinned yet</div>';
+  const footer = `
+    <div class="model-dropdown-footer">
+      <div class="model-footer-row" onclick="openManageModal(event)">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.2"/>
+          <path d="M4 6h4M6 4v4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+        Manage models
+      </div>
+      <div class="model-footer-divider"></div>
+      <div class="model-footer-row" onclick="openModelModal(event)" style="font-size:11px;">
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+          <path d="M5.5 1v9M1 5.5h9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+        Change provider / API key
+      </div>
+    </div>`;
+  el.innerHTML = header + '<div class="model-list-scroll">' + listItems + '</div>' + footer;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MANAGE MODELS — shared engine (modal + settings tab)
+// ═══════════════════════════════════════════════════════════════
+let _mgmtCatalog = null;   // cached per-session
+
+// Shared helper: close dropdown
+function _closeDropdown() {
+  S.modelDropdownOpen = false;
+  document.getElementById('model-selector').classList.remove('open');
+  document.getElementById('model-dropdown').classList.remove('open');
+}
+
+async function openManageModal(e) {
+  if (e) e.stopPropagation();
+  _closeDropdown();
+  document.getElementById('mgmt-backdrop').classList.add('open');
+  document.getElementById('mgmt-search').value = '';
+  _mgmtRenderLoading('mgmt-list');
+  if (!_mgmtCatalog) await _mgmtFetchCatalog('mgmt-list');
+  else _mgmtRenderList('', 'mgmt-list');
+}
+
+function closeManageModal() {
+  document.getElementById('mgmt-backdrop').classList.remove('open');
+}
+
+function mgmtBackdropClick(e) {
+  if (e.target === document.getElementById('mgmt-backdrop')) closeManageModal();
+}
+
+async function _mgmtFetchCatalog(listId) {
+  try {
+    const res  = await fetch('/api/models/catalog');
+    const data = await res.json();
+    _mgmtCatalog = data;
+    _mgmtRenderList('', listId || 'mgmt-list');
+  } catch(err) {
+    const el = document.getElementById(listId || 'mgmt-list');
+    if (el) el.innerHTML = '<div class="mgmt-error-msg">Failed to load catalog: ' + err.message + '</div>';
+  }
+}
+
+function _mgmtRenderLoading(listId) {
+  const el = document.getElementById(listId || 'mgmt-list');
+  if (el) el.innerHTML = '<div class="mgmt-loading"><div class="mgmt-spinner"></div>Loading catalog…</div>';
+}
+
+function _mgmtRenderList(query, listId) {
+  const el = document.getElementById(listId || 'mgmt-list');
+  if (!_mgmtCatalog || !el) return;
+  const { models, current, pinned } = _mgmtCatalog;
+  const q          = (query || '').toLowerCase().trim();
+  const pinnedSet  = new Set(pinned || []);
+  const filtered   = q ? models.filter(m => m.toLowerCase().includes(q)) : models;
+  const pinnedList = filtered.filter(m => pinnedSet.has(m));
+  const otherList  = filtered.filter(m => !pinnedSet.has(m));
+
+  const eyeOpen = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M1 7s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z" stroke="currentColor" stroke-width="1.2"/>
+    <circle cx="7" cy="7" r="1.8" stroke="currentColor" stroke-width="1.2"/>
+  </svg>`;
+  const eyeClosed = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M1 7s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z" stroke="currentColor" stroke-width="1.2" opacity=".4"/>
+    <line x1="2" y1="2" x2="12" y2="12" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+  </svg>`;
+
+  function itemHTML(m, isPinned) {
+    const isActive = m === current;
+    const eyeClass = isActive ? 'mgmt-eye-btn locked pinned' : (isPinned ? 'mgmt-eye-btn pinned' : 'mgmt-eye-btn');
+    const eyeTitle = isActive ? 'Active model — always visible'
+                   : (isPinned ? 'Unpin (hide from dropdown)' : 'Pin (show in dropdown)');
+    const eyeClick = isActive ? '' : `onclick="mgmtTogglePin(event,'${esc(m)}',${isPinned},'${esc(listId||'mgmt-list')}')"`;
+    return `<div class="mgmt-item${isActive?' is-active':''}" onclick="mgmtActivate(event,'${esc(m)}','${esc(listId||'mgmt-list')}')">
+      <span class="mgmt-item-name" title="${esc(m)}">${esc(m)}</span>
+      ${isActive ? '<span class="mgmt-item-badge">active</span>' : ''}
+      <button class="${eyeClass}" title="${eyeTitle}" ${eyeClick}>${isPinned ? eyeOpen : eyeClosed}</button>
+    </div>`;
+  }
+
+  let out = '';
+  if (pinnedList.length) {
+    out += '<div class="mgmt-section-label">Pinned</div>';
+    out += pinnedList.map(m => itemHTML(m, true)).join('');
+  }
+  if (otherList.length) {
+    if (pinnedList.length) out += '<div class="mgmt-section-sep"></div>';
+    if (!q) out += '<div class="mgmt-section-label">All models</div>';
+    out += otherList.map(m => itemHTML(m, false)).join('');
+  }
+  if (!out) out = '<div style="padding:20px;text-align:center;font-size:13px;color:var(--text-dim)">No models match</div>';
+  el.innerHTML = out;
+}
+
+// listId param lets both the modal and settings tab share the same function
+function mgmtSearchInput(val, listId) {
+  _mgmtRenderList(val, listId || 'mgmt-list');
+}
+
+async function mgmtTogglePin(e, model, currentlyPinned, listId) {
+  e.stopPropagation();
+  try {
+    const res  = await fetch(currentlyPinned ? '/api/models/unpin' : '/api/models/pin', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ model }),
+    });
+    const data = await res.json();
+    if (data.error) { console.warn(data.error); return; }
+    if (_mgmtCatalog) _mgmtCatalog.pinned = data.pinned;
+    // Sync search field of the calling panel
+    const searchEl = listId === 'settings-model-list'
+      ? document.getElementById('settings-model-search')
+      : document.getElementById('mgmt-search');
+    _mgmtRenderList(searchEl ? searchEl.value : '', listId);
+    await loadModels();
+  } catch(err) { console.error(err); }
+}
+
+async function mgmtActivate(e, model, listId) {
+  try {
+    await api('/api/model', 'POST', { model });
+    S.currentModel = model;
+    document.getElementById('model-pill').textContent = normalizeModelName(model);
+    if (_mgmtCatalog) {
+      _mgmtCatalog.current = model;
+      if (!_mgmtCatalog.pinned.includes(model)) _mgmtCatalog.pinned.push(model);
+    }
+    const searchEl = listId === 'settings-model-list'
+      ? document.getElementById('settings-model-search')
+      : document.getElementById('mgmt-search');
+    _mgmtRenderList(searchEl ? searchEl.value : '', listId);
+    await loadModels();
+  } catch(err) { console.error(err); }
+}
+
+async function mgmtAddCustom(listId, inputId, hintId) {
+  const lId  = listId  || 'mgmt-list';
+  const iId  = inputId || 'mgmt-add-input';
+  const hId  = hintId  || 'mgmt-add-hint';
+  const inp  = document.getElementById(iId);
+  const hint = document.getElementById(hId);
+  const model = inp ? inp.value.trim() : '';
+  if (!model) { if (inp) inp.focus(); return; }
+  try {
+    const res  = await fetch('/api/models/pin', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ model }),
+    });
+    const data = await res.json();
+    if (data.error) { if (hint) hint.textContent = data.error; return; }
+    if (_mgmtCatalog) {
+      if (!_mgmtCatalog.models.includes(model)) _mgmtCatalog.models.unshift(model);
+      _mgmtCatalog.pinned = data.pinned;
+    }
+    if (inp)  inp.value = '';
+    if (hint) hint.textContent = '';
+    _mgmtRenderList('', lId);
+    await loadModels();
+  } catch(err) { if (hint) hint.textContent = 'Error: ' + err.message; }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODEL CONFIG MODAL  (change provider / API key)
+// ═══════════════════════════════════════════════════════════════
+const _mcfgTimers = {};
+
+function openModelModal(e) {
+  if (e) e.stopPropagation();
+  _closeDropdown();
+  document.getElementById('mcfg-provider').value = '';
+  document.querySelectorAll('.mcfg-pfields').forEach(f => f.classList.remove('show'));
+  document.getElementById('mcfg-result-row').classList.remove('show');
+  document.getElementById('mcfg-error').classList.remove('show');
+  document.getElementById('mcfg-test-btn').classList.remove('ok');
+  document.getElementById('mcfg-test-lbl').textContent = 'Test connection';
+  document.getElementById('mcfg-test-spin').style.display = 'none';
+  document.getElementById('mcfg-save-lbl').textContent = 'Save & apply';
+  document.getElementById('mcfg-save-spin').style.display = 'none';
+  document.getElementById('mcfg-backdrop').classList.add('open');
+}
+
+function closeModelModal() {
+  document.getElementById('mcfg-backdrop').classList.remove('open');
+}
+
+function mcfgBackdropClick(e) {
+  if (e.target === document.getElementById('mcfg-backdrop')) closeModelModal();
+}
+
+function mcfgSelectProvider(p) {
+  document.querySelectorAll('.mcfg-pfields').forEach(f => f.classList.remove('show'));
+  if (p) {
+    const pf = document.getElementById('mcfg-f-' + p);
+    if (pf) pf.classList.add('show');
+  }
+  // Clear test result when switching provider
+  document.getElementById('mcfg-result-row').classList.remove('show');
+  document.getElementById('mcfg-error').classList.remove('show');
+  document.getElementById('mcfg-test-btn').classList.remove('ok');
+  document.getElementById('mcfg-test-lbl').textContent = 'Test connection';
+}
+
+function mcfgScheduleFetch(provider) {
+  clearTimeout(_mcfgTimers[provider]);
+  _mcfgTimers[provider] = setTimeout(() => mcfgFetchModels(provider), 900);
+}
+
+async function mcfgFetchModels(provider) {
+  const keyEl  = document.getElementById('mcfg-' + provider + '-key');
+  const selEl  = document.getElementById('mcfg-' + provider + '-model');
+  const hintEl = document.getElementById('mcfg-' + provider + '-hint');
+  const lblEl  = document.getElementById('mcfg-' + provider + '-lbl');
+  if (!keyEl || !selEl) return;
+  const key = keyEl.value.trim();
+  if (!key) {
+    if (hintEl) { hintEl.textContent = 'Enter your API key first'; hintEl.className = 'mcfg-hint'; }
     return;
   }
-  el.innerHTML = header + models.map(m => `
-    <div class="model-option ${m===current?'current':''}" onclick="selectModel(event,'${esc(m)}')">
-      <span>${normalizeModelName(m)}</span>
-      <svg class="model-option-check" viewBox="0 0 13 13" fill="none">
-        <path d="M2 7l3.5 3.5L11 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    </div>`).join('');
+  if (lblEl) lblEl.textContent = '…';
+  if (hintEl) { hintEl.textContent = 'Fetching live model list…'; hintEl.className = 'mcfg-hint'; }
+  try {
+    const res  = await fetch('/api/setup/provider-models', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ provider, api_key: key }),
+    });
+    const data = await res.json();
+    if (data.models && data.models.length) {
+      const cur = selEl.value;
+      selEl.innerHTML = data.models.map(m =>
+        `<option value="${m}" ${m===cur?'selected':''}>${m}</option>`).join('');
+      if (!data.models.includes(cur)) selEl.value = data.models[0];
+      if (hintEl) {
+        if (data.source === 'live') {
+          hintEl.textContent = '✓ ' + data.models.length + ' models loaded live';
+          hintEl.className = 'mcfg-hint live';
+        } else {
+          const reason = data.error ? ' (' + data.error + ')' : '';
+          hintEl.textContent = data.models.length + ' models (default list' + reason + ')';
+          hintEl.className = 'mcfg-hint';
+        }
+      }
+    }
+  } catch(_) {
+    if (hintEl) { hintEl.textContent = 'Network error — using default list'; hintEl.className = 'mcfg-hint'; }
+  } finally {
+    if (lblEl) lblEl.textContent = 'Load';
+  }
+}
+
+async function mcfgDiscoverOllama() {
+  const host    = document.getElementById('mcfg-ollama-host').value.trim() || 'http://localhost:11434';
+  const btn     = document.getElementById('mcfg-ollama-disc-btn');
+  const status  = document.getElementById('mcfg-ollama-status');
+  const chipFld = document.getElementById('mcfg-ollama-chip-field');
+  const manFld  = document.getElementById('mcfg-ollama-manual-field');
+  const chips   = document.getElementById('mcfg-ollama-chips');
+
+  btn.disabled = true; btn.textContent = 'Scanning…';
+  status.style.display = 'flex'; status.innerHTML = '<div class="mcfg-dot spin"></div><span>Connecting…</span>';
+
+  try {
+    const res  = await fetch('/api/setup/ollama-models?host=' + encodeURIComponent(host));
+    const data = await res.json();
+    if (data.error) {
+      status.innerHTML = '<div class="mcfg-dot err"></div><span>' + data.error + '</span>';
+      chipFld.style.display = 'none'; manFld.style.display = 'block';
+    } else if (!data.models || !data.models.length) {
+      status.innerHTML = '<div class="mcfg-dot err"></div><span>No models found — pull one first with <code>ollama pull mistral</code></span>';
+      chipFld.style.display = 'none'; manFld.style.display = 'block';
+    } else {
+      status.innerHTML = '<div class="mcfg-dot ok"></div><span>' + data.models.length + ' model' + (data.models.length>1?'s':'') + ' found</span>';
+      chips.innerHTML = data.models.map(m =>
+        `<div class="mcfg-chip" onclick="mcfgSelectChip(this,'${m}')">${m}</div>`).join('');
+      chipFld.style.display = 'block';
+      manFld.style.display = 'block';
+      // Auto-select first
+      const first = chips.querySelector('.mcfg-chip');
+      if (first) mcfgSelectChip(first, data.models[0]);
+    }
+  } catch(_) {
+    status.innerHTML = '<div class="mcfg-dot err"></div><span>Could not reach Ollama</span>';
+    chipFld.style.display = 'none'; manFld.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-width="1.2"/><path d="M8 8l2.5 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg> Discover';
+  }
+}
+
+function mcfgSelectChip(el, name) {
+  document.querySelectorAll('#mcfg-ollama-chips .mcfg-chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('mcfg-ollama-model-hidden').value = name;
+  document.getElementById('mcfg-ollama-model').value = name;
+}
+
+function _mcfgCollectConfig() {
+  const p = document.getElementById('mcfg-provider').value;
+  if (!p) return null;
+  const cfg = { provider: p };
+  if (p === 'ollama') {
+    cfg.host  = document.getElementById('mcfg-ollama-host').value.trim() || 'http://localhost:11434';
+    cfg.model = (document.getElementById('mcfg-ollama-model-hidden').value ||
+                 document.getElementById('mcfg-ollama-model').value || '').trim();
+  } else if (p === 'azure') {
+    cfg.api_key     = document.getElementById('mcfg-azure-key').value.trim();
+    cfg.endpoint    = document.getElementById('mcfg-azure-endpoint').value.trim();
+    cfg.model       = document.getElementById('mcfg-azure-model').value.trim();
+    cfg.api_version = document.getElementById('mcfg-azure-version').value.trim() || '2024-02-01';
+  } else {
+    cfg.api_key = document.getElementById('mcfg-' + p + '-key').value.trim();
+    cfg.model   = document.getElementById('mcfg-' + p + '-model').value;
+  }
+  return cfg;
+}
+
+function _mcfgShowError(msg) {
+  const el = document.getElementById('mcfg-error');
+  el.textContent = msg; el.classList.add('show');
+}
+function _mcfgClearError() {
+  document.getElementById('mcfg-error').classList.remove('show');
+}
+
+async function mcfgTestConnection() {
+  _mcfgClearError();
+  const cfg = _mcfgCollectConfig();
+  if (!cfg) { _mcfgShowError('Please select a provider first.'); return; }
+  if (cfg.provider !== 'ollama' && !cfg.api_key) { _mcfgShowError('API key is required.'); return; }
+  if (!cfg.model) { _mcfgShowError('Model name is required.'); return; }
+
+  const btn   = document.getElementById('mcfg-test-btn');
+  const lbl   = document.getElementById('mcfg-test-lbl');
+  const spin  = document.getElementById('mcfg-test-spin');
+  const res   = document.getElementById('mcfg-result-row');
+  const dot   = document.getElementById('mcfg-dot');
+  const msg   = document.getElementById('mcfg-result-msg');
+
+  btn.disabled = true; lbl.textContent = 'Testing…'; spin.style.display = 'block';
+  btn.classList.remove('ok');
+  res.classList.add('show'); dot.className = 'mcfg-dot spin'; msg.textContent = 'Contacting provider…';
+
+  try {
+    const r    = await fetch('/api/setup/model', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(cfg),
+    });
+    const data = await r.json();
+    if (data.success) {
+      dot.className = 'mcfg-dot ok'; msg.textContent = 'Connected — ' + data.provider + ' / ' + data.model;
+      btn.classList.add('ok'); lbl.textContent = '✓ Connected';
+      // Already saved by the backend — update UI
+      _mgmtCatalog = null;
+      S.currentModel = data.model;
+      document.getElementById('model-pill').textContent = normalizeModelName(data.model);
+      await loadModels();
+    } else {
+      dot.className = 'mcfg-dot err'; msg.textContent = data.error || 'Connection failed';
+      _mcfgShowError(data.error || 'Connection failed');
+    }
+  } catch(err) {
+    dot.className = 'mcfg-dot err'; msg.textContent = 'Network error';
+    _mcfgShowError('Network error: ' + err.message);
+  } finally {
+    btn.disabled = false; spin.style.display = 'none';
+    if (!btn.classList.contains('ok')) lbl.textContent = 'Test connection';
+  }
+}
+
+async function mcfgSave() {
+  _mcfgClearError();
+  const cfg = _mcfgCollectConfig();
+  if (!cfg) { _mcfgShowError('Please select a provider first.'); return; }
+  if (cfg.provider !== 'ollama' && !cfg.api_key) { _mcfgShowError('API key is required.'); return; }
+  if (!cfg.model) { _mcfgShowError('Model name is required.'); return; }
+
+  const saveBtn  = document.getElementById('mcfg-save-btn');
+  const saveLbl  = document.getElementById('mcfg-save-lbl');
+  const saveSpin = document.getElementById('mcfg-save-spin');
+  saveBtn.disabled = true; saveLbl.textContent = 'Saving…'; saveSpin.style.display = 'block';
+
+  try {
+    const r    = await fetch('/api/setup/model', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(cfg),
+    });
+    const data = await r.json();
+    if (data.success) {
+      _mgmtCatalog = null;
+      S.currentModel = data.model;
+      document.getElementById('model-pill').textContent = normalizeModelName(data.model);
+      await loadModels();
+      closeModelModal();
+    } else {
+      _mcfgShowError(data.error || 'Failed to save configuration');
+      saveLbl.textContent = 'Save & apply'; saveSpin.style.display = 'none';
+      saveBtn.disabled = false;
+    }
+  } catch(err) {
+    _mcfgShowError('Network error: ' + err.message);
+    saveLbl.textContent = 'Save & apply'; saveSpin.style.display = 'none';
+    saveBtn.disabled = false;
+  }
 }
 
 function toggleModelDropdown(e) {
@@ -1913,7 +2677,6 @@ function appendAiResponse(d) {
       <div class="msg-avatar ai" style="background:none;border:none;">${makeLogoSm()}</div>
       <div class="msg-body">
         <div class="msg-role">Dataloom ${confBadge}</div>
-        ${d.summary ? `<div class="msg-summary">${esc(d.summary)}</div>` : ''}
         ${assumptionHtml}
         ${sqlToggle}${exportBtn}
         ${sqlBlock}
@@ -2241,9 +3004,20 @@ function closeSettingsOnBackdrop(e) {
 
 function switchTab(name) {
   document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.classList.remove('active');
+    p.style.display = '';
+  });
   document.getElementById(`tab-${name}`).classList.add('active');
-  document.getElementById(`panel-${name}`).classList.add('active');
+  const panel = document.getElementById(`panel-${name}`);
+  panel.classList.add('active');
+  if (name === 'models') {
+    panel.style.display = 'flex';
+    document.getElementById('settings-model-search').value = '';
+    _mgmtRenderLoading('settings-model-list');
+    if (!_mgmtCatalog) _mgmtFetchCatalog('settings-model-list');
+    else _mgmtRenderList('', 'settings-model-list');
+  }
 }
 
 // ── Schema Tuner ──────────────────────────────────────────────
@@ -2419,21 +3193,13 @@ async function loadConnectionInfo() {
   });
 })();
 
-// ── Welcome modal ─────────────────────────────────────────────────────────
-function showWelcome() {
-  document.getElementById('welcome-overlay').classList.add('open');
-}
-function closeWelcome() {
-  // If "don't show again" is checked, persist to localStorage
-  const cb = document.getElementById('welcome-dont-show');
-  if (cb && cb.checked) {
-    try { localStorage.setItem('dl_hide_welcome', '1'); } catch(e) {}
-  }
-  document.getElementById('welcome-overlay').classList.remove('open');
-}
 // Keyboard shortcut: Escape to close modal
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeSettings();
+  if (e.key === 'Escape') {
+    closeSettings();
+    closeModelModal();
+    closeManageModal();
+  }
 });
 
 // Home button — clear chat display and reload history chips
@@ -2444,15 +3210,6 @@ async function goHome() {
 
 init();
 
-// Show welcome after FULL page load — guarantees welcome-overlay div exists
-// regardless of connection speed or DOM parse order
-window.addEventListener('load', () => {
-  try {
-    if (!localStorage.getItem('dl_hide_welcome')) showWelcome();
-  } catch(e) {
-    showWelcome();
-  }
-});
 </script>
 
 
@@ -2467,73 +3224,266 @@ window.addEventListener('load', () => {
 <!-- ── Mobile sidebar backdrop ──────────────────────────────────────────── -->
 <div id="sidebar-backdrop" onclick="closeMobileSidebar()"></div>
 
-<!-- ── Welcome Modal ──────────────────────────────────────────────────── -->
-<div class="modal-overlay" id="welcome-overlay">
-  <div class="modal" style="max-width:520px">
-    <div class="modal-header" style="border-bottom:1px solid var(--border); padding:20px 24px 16px">
-      <div style="display:flex;align-items:center;gap:10px">
-        <svg width="22" height="22" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <defs><linearGradient id="wlg" x1="8" y1="6" x2="32" y2="34" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="#A5B4FC"/><stop offset="100%" stop-color="#4F46E5"/>
-          </linearGradient></defs>
-          <circle cx="20" cy="20" r="17" stroke="url(#wlg)" stroke-width="2.2" fill="none"/>
-          <path d="M20 3 C11 7 7.5 13 7.5 20 C7.5 27 11 33 20 37" stroke="url(#wlg)" stroke-width="2" fill="none" stroke-linecap="round"/>
-          <path d="M20 3 C23 7 24.5 13 24.5 20 C24.5 27 23 33 20 37" stroke="url(#wlg)" stroke-width="2" fill="none" stroke-linecap="round"/>
-          <path d="M4.5 13 C10 10.5 15 9.5 20 9.5 C25 9.5 30 10.5 35.5 13" stroke="url(#wlg)" stroke-width="2" fill="none" stroke-linecap="round"/>
-          <path d="M4.5 27 C10 29.5 15 30.5 20 30.5 C25 30.5 30 29.5 35.5 27" stroke="url(#wlg)" stroke-width="2" fill="none" stroke-linecap="round"/>
-          <path d="M9 28 C13 23 17 17 24 11" stroke="url(#wlg)" stroke-width="1.6" fill="none" stroke-linecap="round" opacity="0.75"/>
-          <circle cx="14.5" cy="12.5" r="3" fill="#C7D2FE"/>
-          <circle cx="11" cy="20" r="3" fill="#818CF8"/>
-          <circle cx="26" cy="28.5" r="3" fill="#A5B4FC"/>
-        </svg>
-        <span class="modal-title">Welcome to Dataloom</span>
+
+<!-- ── Model config modal ─────────────────────────────────────────────── -->
+<div id="mcfg-backdrop" class="mcfg-backdrop" onclick="mcfgBackdropClick(event)">
+  <div class="mcfg-card" onclick="event.stopPropagation()">
+
+    <!-- Header -->
+    <div class="mcfg-header">
+      <div>
+        <div class="mcfg-title">Configure Model</div>
+        <div class="mcfg-subtitle">Switch provider or add a new model to the session</div>
       </div>
-      <button class="modal-close" onclick="closeWelcome()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-      </button>
+      <button class="mcfg-close" onclick="closeModelModal()" title="Close">&#x2715;</button>
     </div>
-    <div class="modal-body" style="padding:24px;display:block">
 
-      <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:var(--text-primary)">
-        <strong>Dataloom</strong> lets you query any database using plain English — no SQL required.
-        Type a question, get instant results, export as CSV or Excel.
-      </p>
+    <!-- Provider select -->
+    <div class="mcfg-field">
+      <label class="mcfg-label">Provider</label>
+      <select id="mcfg-provider" class="mcfg-input mcfg-select-arrow" onchange="mcfgSelectProvider(this.value)">
+        <option value="">— choose a provider —</option>
+        <option value="openai">OpenAI</option>
+        <option value="gemini">Google Gemini</option>
+        <option value="anthropic">Anthropic Claude</option>
+        <option value="xai">xAI Grok</option>
+        <option value="openrouter">OpenRouter</option>
+        <option value="azure">Azure OpenAI</option>
+        <option value="ollama">Ollama (local)</option>
+      </select>
+    </div>
 
-      <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px">
-        <div style="font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--text-secondary);text-transform:uppercase;margin-bottom:12px">Demo Database — Olist E-commerce</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div style="background:var(--bg-card);border-radius:8px;padding:12px">
-            <div style="font-size:20px;font-weight:700;color:var(--accent)">57,165</div>
-            <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Orders</div>
-          </div>
-          <div style="background:var(--bg-card);border-radius:8px;padding:12px">
-            <div style="font-size:20px;font-weight:700;color:var(--accent)">32,951</div>
-            <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Products</div>
-          </div>
-          <div style="background:var(--bg-card);border-radius:8px;padding:12px">
-            <div style="font-size:20px;font-weight:700;color:var(--accent)">50,000</div>
-            <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Customers</div>
-          </div>
-          <div style="background:var(--bg-card);border-radius:8px;padding:12px">
-            <div style="font-size:20px;font-weight:700;color:var(--accent)">27</div>
-            <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">Product categories</div>
-          </div>
+    <!-- ── OpenAI ── -->
+    <div id="mcfg-f-openai" class="mcfg-pfields">
+      <div class="mcfg-field">
+        <label class="mcfg-label">API Key</label>
+        <input type="password" id="mcfg-openai-key" class="mcfg-input"
+               placeholder="sk-••••••••••••••••" autocomplete="off"
+               oninput="mcfgScheduleFetch('openai')" />
+      </div>
+      <div class="mcfg-field">
+        <label class="mcfg-label">Model</label>
+        <div class="mcfg-row">
+          <select id="mcfg-openai-model" class="mcfg-input mcfg-select-arrow">
+            <option value="gpt-4o">gpt-4o</option>
+            <option value="gpt-4o-mini">gpt-4o-mini</option>
+            <option value="gpt-4-turbo">gpt-4-turbo</option>
+            <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+          </select>
+          <button class="mcfg-load-btn" onclick="mcfgFetchModels('openai')">
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M9.5 5.5a4 4 0 1 1-1.17-2.83" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M7 2l1.33 0.67L9 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span id="mcfg-openai-lbl">Load</span>
+          </button>
         </div>
-        <div style="font-size:12px;color:var(--text-secondary);margin-top:12px;line-height:1.6">
-          Real Brazilian e-commerce data. Ask anything about revenue, delivery times, product performance, or customer behaviour.
+        <div class="mcfg-hint" id="mcfg-openai-hint"></div>
+      </div>
+    </div>
+
+    <!-- ── Gemini ── -->
+    <div id="mcfg-f-gemini" class="mcfg-pfields">
+      <div class="mcfg-field">
+        <label class="mcfg-label">API Key</label>
+        <input type="password" id="mcfg-gemini-key" class="mcfg-input"
+               placeholder="AIza••••••••••••••••" autocomplete="off"
+               oninput="mcfgScheduleFetch('gemini')" />
+      </div>
+      <div class="mcfg-field">
+        <label class="mcfg-label">Model</label>
+        <div class="mcfg-row">
+          <select id="mcfg-gemini-model" class="mcfg-input mcfg-select-arrow">
+            <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+            <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+            <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
+            <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+            <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+          </select>
+          <button class="mcfg-load-btn" onclick="mcfgFetchModels('gemini')">
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M9.5 5.5a4 4 0 1 1-1.17-2.83" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M7 2l1.33 0.67L9 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span id="mcfg-gemini-lbl">Load</span>
+          </button>
+        </div>
+        <div class="mcfg-hint" id="mcfg-gemini-hint"></div>
+      </div>
+    </div>
+
+    <!-- ── Anthropic ── -->
+    <div id="mcfg-f-anthropic" class="mcfg-pfields">
+      <div class="mcfg-field">
+        <label class="mcfg-label">API Key</label>
+        <input type="password" id="mcfg-anthropic-key" class="mcfg-input"
+               placeholder="sk-ant-••••••••••••••••" autocomplete="off" />
+      </div>
+      <div class="mcfg-field">
+        <label class="mcfg-label">Model</label>
+        <select id="mcfg-anthropic-model" class="mcfg-input mcfg-select-arrow">
+          <option value="claude-opus-4-5">claude-opus-4-5</option>
+          <option value="claude-sonnet-4-5" selected>claude-sonnet-4-5</option>
+          <option value="claude-haiku-4-5">claude-haiku-4-5</option>
+          <option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet-20241022</option>
+          <option value="claude-3-5-haiku-20241022">claude-3-5-haiku-20241022</option>
+        </select>
+        <div class="mcfg-hint">Anthropic doesn't expose a public models endpoint — curated list.</div>
+      </div>
+    </div>
+
+    <!-- ── xAI ── -->
+    <div id="mcfg-f-xai" class="mcfg-pfields">
+      <div class="mcfg-field">
+        <label class="mcfg-label">API Key</label>
+        <input type="password" id="mcfg-xai-key" class="mcfg-input"
+               placeholder="xai-••••••••••••••••" autocomplete="off"
+               oninput="mcfgScheduleFetch('xai')" />
+      </div>
+      <div class="mcfg-field">
+        <label class="mcfg-label">Model</label>
+        <div class="mcfg-row">
+          <select id="mcfg-xai-model" class="mcfg-input mcfg-select-arrow">
+            <option value="grok-3">grok-3</option>
+            <option value="grok-3-mini" selected>grok-3-mini</option>
+            <option value="grok-3-fast">grok-3-fast</option>
+            <option value="grok-2-1212">grok-2-1212</option>
+          </select>
+          <button class="mcfg-load-btn" onclick="mcfgFetchModels('xai')">
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M9.5 5.5a4 4 0 1 1-1.17-2.83" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M7 2l1.33 0.67L9 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span id="mcfg-xai-lbl">Load</span>
+          </button>
+        </div>
+        <div class="mcfg-hint" id="mcfg-xai-hint"></div>
+      </div>
+    </div>
+
+    <!-- ── OpenRouter ── -->
+    <div id="mcfg-f-openrouter" class="mcfg-pfields">
+      <div class="mcfg-field">
+        <label class="mcfg-label">API Key</label>
+        <input type="password" id="mcfg-openrouter-key" class="mcfg-input"
+               placeholder="sk-or-••••••••••••••••" autocomplete="off"
+               oninput="mcfgScheduleFetch('openrouter')" />
+      </div>
+      <div class="mcfg-field">
+        <label class="mcfg-label">Model</label>
+        <div class="mcfg-row">
+          <select id="mcfg-openrouter-model" class="mcfg-input mcfg-select-arrow">
+            <option value="openai/gpt-4o">openai/gpt-4o</option>
+            <option value="openai/gpt-4o-mini">openai/gpt-4o-mini</option>
+            <option value="anthropic/claude-sonnet-4-5">anthropic/claude-sonnet-4-5</option>
+            <option value="google/gemini-2.5-flash">google/gemini-2.5-flash</option>
+            <option value="meta-llama/llama-3.3-70b-instruct">meta-llama/llama-3.3-70b-instruct</option>
+          </select>
+          <button class="mcfg-load-btn" onclick="mcfgFetchModels('openrouter')">
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M9.5 5.5a4 4 0 1 1-1.17-2.83" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M7 2l1.33 0.67L9 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span id="mcfg-openrouter-lbl">Load</span>
+          </button>
+        </div>
+        <div class="mcfg-hint" id="mcfg-openrouter-hint"></div>
+      </div>
+    </div>
+
+    <!-- ── Azure ── -->
+    <div id="mcfg-f-azure" class="mcfg-pfields">
+      <div class="mcfg-field">
+        <label class="mcfg-label">Endpoint URL</label>
+        <input type="text" id="mcfg-azure-endpoint" class="mcfg-input"
+               placeholder="https://your-instance.openai.azure.com" autocomplete="off" />
+      </div>
+      <div class="mcfg-field">
+        <label class="mcfg-label">API Key</label>
+        <input type="password" id="mcfg-azure-key" class="mcfg-input"
+               placeholder="••••••••••••••••••••••••••••••••" autocomplete="off" />
+      </div>
+      <div class="mcfg-field">
+        <label class="mcfg-label">Deployment Name</label>
+        <input type="text" id="mcfg-azure-model" class="mcfg-input"
+               placeholder="my-gpt4o-deployment" autocomplete="off" />
+      </div>
+      <div class="mcfg-field">
+        <label class="mcfg-label">API Version</label>
+        <input type="text" id="mcfg-azure-version" class="mcfg-input"
+               placeholder="2024-02-01" value="2024-02-01" />
+      </div>
+      <div class="mcfg-hint">Enter the deployment name you created in Azure OpenAI Studio.</div>
+    </div>
+
+    <!-- ── Ollama ── -->
+    <div id="mcfg-f-ollama" class="mcfg-pfields">
+      <div class="mcfg-field">
+        <label class="mcfg-label">Host</label>
+        <div class="mcfg-discover-row">
+          <input type="text" id="mcfg-ollama-host" class="mcfg-input"
+                 placeholder="http://localhost:11434" value="http://localhost:11434" />
+          <button class="mcfg-discover-btn" id="mcfg-ollama-disc-btn" onclick="mcfgDiscoverOllama()">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-width="1.2"/><path d="M8 8l2.5 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            Discover
+          </button>
         </div>
       </div>
+      <div id="mcfg-ollama-status" style="display:none;font-size:12px;color:var(--text-secondary);margin-bottom:8px;display:flex;align-items:center;gap:7px;"></div>
+      <div id="mcfg-ollama-chip-field" style="display:none;">
+        <label class="mcfg-label">Available models</label>
+        <div class="mcfg-chips" id="mcfg-ollama-chips"></div>
+        <input type="hidden" id="mcfg-ollama-model-hidden" />
+      </div>
+      <div id="mcfg-ollama-manual-field" style="display:none;">
+        <label class="mcfg-label">Or enter model name manually</label>
+        <input type="text" id="mcfg-ollama-model" class="mcfg-input" placeholder="mistral" />
+      </div>
+    </div>
 
-      <!-- Don't show again -->
-      <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;cursor:pointer;user-select:none">
-        <input type="checkbox" id="welcome-dont-show"
-          style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer;flex-shrink:0">
-        <span style="font-size:12.5px;color:var(--text-secondary)">Don't show this again</span>
-      </label>
+    <!-- Test connection -->
+    <button class="mcfg-test-btn" id="mcfg-test-btn" onclick="mcfgTestConnection()">
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+        <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" stroke-width="1.2"/>
+        <path d="M4.5 6.5l1.5 1.5 3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span id="mcfg-test-lbl">Test connection</span>
+      <div class="mcfg-spinner" id="mcfg-test-spin" style="display:none;"></div>
+    </button>
 
-      <button onclick="closeWelcome()" style="width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .2s" onmouseover="this.style.background='var(--accent-hover)'" onmouseout="this.style.background='var(--accent)'">
-        Start exploring →
-      </button>
+    <div class="mcfg-result-row" id="mcfg-result-row">
+      <div class="mcfg-dot" id="mcfg-dot"></div>
+      <span id="mcfg-result-msg">Contacting provider…</span>
+    </div>
+
+    <div class="mcfg-error" id="mcfg-error"></div>
+
+    <div class="mcfg-divider"></div>
+
+    <button class="mcfg-save-btn" id="mcfg-save-btn" onclick="mcfgSave()">
+      <span id="mcfg-save-lbl">Save &amp; apply</span>
+      <div class="mcfg-spinner" id="mcfg-save-spin" style="display:none;"></div>
+    </button>
+    <div class="mcfg-cancel-link" onclick="closeModelModal()">Cancel</div>
+
+  </div><!-- /mcfg-card -->
+</div><!-- /mcfg-backdrop -->
+
+
+<!-- ── Manage models modal ─────────────────────────────────── -->
+<div id="mgmt-backdrop" class="mgmt-backdrop" onclick="mgmtBackdropClick(event)">
+  <div class="mgmt-card" onclick="event.stopPropagation()">
+    <div class="mgmt-panel-header">
+      <div>
+        <div class="mgmt-title">Manage Models</div>
+        <div class="mgmt-subtitle">Pin models for quick access · click a row to activate</div>
+      </div>
+      <div class="mgmt-header-actions">
+        <span class="mgmt-provider-link" onclick="closeManageModal(); openModelModal(null);">⚡ Change provider</span>
+        <button class="mgmt-close" onclick="closeManageModal()" title="Close">&#x2715;</button>
+      </div>
+    </div>
+    <div class="mgmt-search-wrap">
+      <input id="mgmt-search" class="mgmt-search" type="text" placeholder="Search models…"
+             oninput="mgmtSearchInput(this.value,'mgmt-list')" />
+    </div>
+    <div class="mgmt-list" id="mgmt-list"></div>
+    <div class="mgmt-footer">
+      <div class="mgmt-add-row">
+        <input id="mgmt-add-input" class="mgmt-add-input" type="text"
+               placeholder="Add custom model (e.g. llama3.1:8b-q4)"
+               onkeydown="if(event.key==='Enter') mgmtAddCustom('mgmt-list','mgmt-add-input','mgmt-add-hint')" />
+        <button class="mgmt-add-btn" onclick="mgmtAddCustom('mgmt-list','mgmt-add-input','mgmt-add-hint')">Pin</button>
+      </div>
+      <div class="mgmt-add-hint" id="mgmt-add-hint"></div>
     </div>
   </div>
 </div>

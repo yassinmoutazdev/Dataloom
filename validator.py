@@ -375,15 +375,22 @@ def humanize_errors(errors: list[str]) -> str:
 def validate_intent(
     intent:      dict,
     schema_map:  dict,
-    schema_types: dict = None,
+    schema_types: dict | None = None,
 ) -> tuple[bool, list[str]]:
 
     errors: list[str] = []
 
+    # ── Validate join types BEFORE normalization ─────────────────
+    for join in intent.get("joins", []):
+        if isinstance(join, dict):
+            raw_type = join.get("type", "").lower()
+            if raw_type and raw_type not in {t.lower() for t in VALID_JOIN_TYPES}:
+                errors.append(f"Invalid join type: {raw_type}")
+
     # ── Normalise structural fields ───────────────────────────────
     intent["group_by"]           = intent.get("group_by")           or []
-    intent["joins"]              = normalize_joins(intent.get("joins") or [])
-    intent["filters"]            = normalize_filters(intent.get("filters") or [])
+    intent["joins"]              = normalize_joins(intent.get("joins", []))
+    intent["filters"]            = normalize_filters(intent.get("filters", []))
     intent["having"]             = intent.get("having")             or []
     intent["computed_columns"]   = intent.get("computed_columns")   or []   # 4A-7
     intent["time_bucket"]        = (intent.get("time_bucket")       or "").lower().strip() or None
@@ -1081,7 +1088,7 @@ def _col_type(
     fact_table: str,
     schema_map: dict,
     schema_types: dict,
-) -> str:
+) -> str | None:
     for table in [fact_table] + list(schema_map.keys()):
         if table and col in schema_types.get(table, {}):
             return schema_types[table][col]

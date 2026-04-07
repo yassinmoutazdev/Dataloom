@@ -421,6 +421,124 @@
       animation: fadeUp 0.3s ease both;
     }
 
+    /* ── Provider cards (step 4) ───────────────────────────────── */
+    .provider-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr);
+      gap: 10px; margin-bottom: 22px;
+    }
+    .provider-btn {
+      background: var(--bg-elevated);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex; flex-direction: column;
+      align-items: center; gap: 8px;
+      color: var(--text-secondary);
+      text-align: center;
+    }
+    .provider-btn:hover {
+      border-color: var(--border-hover);
+      color: var(--text-primary);
+      transform: translateY(-1px);
+    }
+    .provider-btn.selected {
+      border-color: var(--accent-border);
+      background: var(--accent-dim);
+      color: var(--accent);
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+    .provider-icon {
+      width: 32px; height: 32px;
+      border-radius: var(--radius-sm);
+      background: rgba(255,255,255,0.04);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .provider-label { font-size: 11.5px; font-weight: 500; line-height: 1.3; }
+    .provider-fields {
+      display: none; margin-bottom: 4px;
+      animation: fadeUp 0.2s ease both;
+    }
+    .provider-fields.show { display: block; }
+
+    /* ── Model select with inline refresh button ───────────────── */
+    .model-select-row {
+      display: flex; gap: 8px; align-items: flex-end;
+    }
+    .model-select-row select { flex: 1; }
+    .btn-refresh-models {
+      background: var(--bg-elevated);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 11px; font-weight: 500;
+      padding: 0 12px;
+      height: 38px;
+      cursor: pointer; white-space: nowrap;
+      transition: all 0.2s ease;
+      display: flex; align-items: center; gap: 5px;
+      font-family: 'DM Sans', sans-serif;
+      flex-shrink: 0;
+    }
+    .btn-refresh-models:hover { border-color: var(--accent-border); color: var(--accent); }
+    .btn-refresh-models.loading { opacity: 0.5; pointer-events: none; }
+    .model-select-hint {
+      font-size: 11px; color: var(--text-dim); margin-top: 5px;
+    }
+    .model-select-hint.live { color: var(--success); }
+
+    /* ── Ollama chip discovery ─────────────────────────────────── */
+    .ollama-discover-row {
+      display: flex; gap: 8px; align-items: flex-end; margin-bottom: 12px;
+    }
+    .ollama-discover-row input { flex: 1; }
+    .ollama-model-chips {
+      display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px;
+    }
+    .ollama-chip {
+      padding: 6px 13px;
+      border-radius: 20px;
+      border: 1.5px solid var(--border);
+      background: var(--bg-elevated);
+      font-size: 12px; font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-family: 'DM Mono', monospace;
+    }
+    .ollama-chip:hover { border-color: var(--border-hover); color: var(--text-primary); }
+    .ollama-chip.selected {
+      border-color: var(--accent-border);
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
+
+    /* ── Test / continue buttons ───────────────────────────────── */
+    .btn-test {
+      background: var(--bg-elevated);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 12.5px; font-weight: 500;
+      padding: 10px 18px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex; align-items: center; gap: 7px;
+      font-family: 'DM Sans', sans-serif;
+      margin-top: 16px; width: 100%; justify-content: center;
+    }
+    .btn-test:hover { border-color: var(--accent-border); color: var(--accent); }
+    .btn-test.loading { opacity: 0.6; pointer-events: none; }
+    .btn-test.ok { border-color: rgba(16,185,129,0.4); color: var(--success); background: var(--success-dim); }
+    .skip-link {
+      text-align: center; margin-top: 10px;
+      font-size: 12px; color: var(--text-dim);
+      cursor: pointer; transition: color 0.2s;
+    }
+    .skip-link:hover { color: var(--text-secondary); }
+
     /* ── Footer hint ───────────────────────────────────────── */
     .footer-hint {
       text-align: center; margin-top: 20px;
@@ -482,6 +600,10 @@
       <div class="step-line" id="line-2"></div>
       <div class="step-item">
         <div class="step-dot" id="dot-3">3</div>
+      </div>
+      <div class="step-line" id="line-3"></div>
+      <div class="step-item">
+        <div class="step-dot" id="dot-4">4</div>
       </div>
     </div>
 
@@ -610,6 +732,241 @@
         <button class="btn-back" onclick="goStep(2)">← Change settings</button>
       </div>
 
+      <!-- ── Step 4: Configure AI Model ── -->
+      <div class="step-panel" id="step-4">
+        <div class="card-header">
+          <div class="card-title">Configure AI model</div>
+          <div class="card-subtitle">Choose a provider and enter your credentials. Keys are stored only in your session and never written to disk.</div>
+        </div>
+
+        <!-- Provider cards — 7 providers in 2-column grid -->
+        <div class="provider-grid">
+          <button class="provider-btn" data-provider="openai"      onclick="selectProvider(this)">
+            <div class="provider-icon">⚡</div>
+            <div class="provider-label">OpenAI</div>
+          </button>
+          <button class="provider-btn" data-provider="gemini"      onclick="selectProvider(this)">
+            <div class="provider-icon">✦</div>
+            <div class="provider-label">Google Gemini</div>
+          </button>
+          <button class="provider-btn" data-provider="anthropic"   onclick="selectProvider(this)">
+            <div class="provider-icon">◆</div>
+            <div class="provider-label">Anthropic</div>
+          </button>
+          <button class="provider-btn" data-provider="xai"         onclick="selectProvider(this)">
+            <div class="provider-icon">𝕏</div>
+            <div class="provider-label">xAI Grok</div>
+          </button>
+          <button class="provider-btn" data-provider="openrouter"  onclick="selectProvider(this)">
+            <div class="provider-icon">⬡</div>
+            <div class="provider-label">OpenRouter</div>
+          </button>
+          <button class="provider-btn" data-provider="azure"       onclick="selectProvider(this)">
+            <div class="provider-icon">☁</div>
+            <div class="provider-label">Azure OpenAI</div>
+          </button>
+          <button class="provider-btn" data-provider="ollama"      onclick="selectProvider(this)" style="grid-column:1/-1;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div class="provider-icon">🦙</div>
+              <div class="provider-label" style="text-align:left;">Ollama <span style="font-weight:300;opacity:.7;">(local)</span></div>
+            </div>
+          </button>
+        </div>
+
+        <!-- ── OpenAI fields ── -->
+        <div class="provider-fields" id="fields-openai">
+          <div class="field">
+            <label>API Key</label>
+            <input type="password" id="inp-openai-key" placeholder="sk-••••••••••••••••" autocomplete="off"
+                   oninput="scheduleModelFetch('openai')" />
+          </div>
+          <div class="field">
+            <label>Model</label>
+            <div class="model-select-row">
+              <select id="inp-openai-model">
+                <option value="gpt-4o">gpt-4o</option>
+                <option value="gpt-4o-mini">gpt-4o-mini</option>
+                <option value="gpt-4-turbo">gpt-4-turbo</option>
+                <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+              </select>
+              <button class="btn-refresh-models" onclick="fetchModelsFor('openai')" title="Refresh model list">
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M9.5 5.5a4 4 0 1 1-1.17-2.83" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M7 2l1.33 0.67L9 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span id="openai-model-refresh-label">Load</span>
+              </button>
+            </div>
+            <div class="model-select-hint" id="openai-model-hint"></div>
+          </div>
+        </div>
+
+        <!-- ── Gemini fields ── -->
+        <div class="provider-fields" id="fields-gemini">
+          <div class="field">
+            <label>API Key</label>
+            <input type="password" id="inp-gemini-key" placeholder="AIza••••••••••••••••" autocomplete="off"
+                   oninput="scheduleModelFetch('gemini')" />
+          </div>
+          <div class="field">
+            <label>Model</label>
+            <div class="model-select-row">
+              <select id="inp-gemini-model">
+                <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
+                <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+              </select>
+              <button class="btn-refresh-models" onclick="fetchModelsFor('gemini')" title="Refresh model list">
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M9.5 5.5a4 4 0 1 1-1.17-2.83" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M7 2l1.33 0.67L9 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span id="gemini-model-refresh-label">Load</span>
+              </button>
+            </div>
+            <div class="model-select-hint" id="gemini-model-hint"></div>
+          </div>
+        </div>
+
+        <!-- ── Anthropic fields ── -->
+        <div class="provider-fields" id="fields-anthropic">
+          <div class="field">
+            <label>API Key</label>
+            <input type="password" id="inp-anthropic-key" placeholder="sk-ant-••••••••••••••••" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label>Model</label>
+            <select id="inp-anthropic-model">
+              <option value="claude-opus-4-5">claude-opus-4-5</option>
+              <option value="claude-sonnet-4-5" selected>claude-sonnet-4-5</option>
+              <option value="claude-haiku-4-5">claude-haiku-4-5</option>
+              <option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet-20241022</option>
+              <option value="claude-3-5-haiku-20241022">claude-3-5-haiku-20241022</option>
+            </select>
+            <div class="model-select-hint">Curated list — Anthropic doesn't expose a public models endpoint.</div>
+          </div>
+        </div>
+
+        <!-- ── xAI fields ── -->
+        <div class="provider-fields" id="fields-xai">
+          <div class="field">
+            <label>API Key</label>
+            <input type="password" id="inp-xai-key" placeholder="xai-••••••••••••••••" autocomplete="off"
+                   oninput="scheduleModelFetch('xai')" />
+          </div>
+          <div class="field">
+            <label>Model</label>
+            <div class="model-select-row">
+              <select id="inp-xai-model">
+                <option value="grok-3">grok-3</option>
+                <option value="grok-3-mini" selected>grok-3-mini</option>
+                <option value="grok-3-fast">grok-3-fast</option>
+                <option value="grok-2-1212">grok-2-1212</option>
+              </select>
+              <button class="btn-refresh-models" onclick="fetchModelsFor('xai')" title="Refresh model list">
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M9.5 5.5a4 4 0 1 1-1.17-2.83" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M7 2l1.33 0.67L9 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span id="xai-model-refresh-label">Load</span>
+              </button>
+            </div>
+            <div class="model-select-hint" id="xai-model-hint"></div>
+          </div>
+        </div>
+
+        <!-- ── OpenRouter fields ── -->
+        <div class="provider-fields" id="fields-openrouter">
+          <div class="field">
+            <label>API Key</label>
+            <input type="password" id="inp-openrouter-key" placeholder="sk-or-••••••••••••••••" autocomplete="off"
+                   oninput="scheduleModelFetch('openrouter')" />
+          </div>
+          <div class="field">
+            <label>Model</label>
+            <div class="model-select-row">
+              <select id="inp-openrouter-model">
+                <option value="openai/gpt-4o">openai/gpt-4o</option>
+                <option value="openai/gpt-4o-mini">openai/gpt-4o-mini</option>
+                <option value="anthropic/claude-sonnet-4-5">anthropic/claude-sonnet-4-5</option>
+                <option value="google/gemini-2.5-flash">google/gemini-2.5-flash</option>
+                <option value="meta-llama/llama-3.3-70b-instruct">meta-llama/llama-3.3-70b-instruct</option>
+              </select>
+              <button class="btn-refresh-models" onclick="fetchModelsFor('openrouter')" title="Refresh model list">
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M9.5 5.5a4 4 0 1 1-1.17-2.83" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M7 2l1.33 0.67L9 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span id="openrouter-model-refresh-label">Load</span>
+              </button>
+            </div>
+            <div class="model-select-hint" id="openrouter-model-hint"></div>
+          </div>
+        </div>
+
+        <!-- ── Azure OpenAI fields ── -->
+        <div class="provider-fields" id="fields-azure">
+          <div class="field">
+            <label>Endpoint URL</label>
+            <input type="text" id="inp-azure-endpoint" placeholder="https://your-instance.openai.azure.com" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label>API Key</label>
+            <input type="password" id="inp-azure-key" placeholder="••••••••••••••••••••••••••••••••" autocomplete="off" />
+          </div>
+          <div class="field field-row-3">
+            <div>
+              <label>Deployment Name</label>
+              <input type="text" id="inp-azure-model" placeholder="my-gpt4o-deployment" autocomplete="off" />
+            </div>
+            <div>
+              <label>API Version</label>
+              <input type="text" id="inp-azure-version" placeholder="2024-02-01" value="2024-02-01" />
+            </div>
+          </div>
+          <div class="model-select-hint" style="margin-top:-6px;">Enter the deployment name you created in Azure OpenAI Studio.</div>
+        </div>
+
+        <!-- ── Ollama fields ── -->
+        <div class="provider-fields" id="fields-ollama">
+          <div class="field">
+            <label>Host</label>
+            <div class="ollama-discover-row">
+              <input type="text" id="inp-ollama-host" placeholder="http://localhost:11434"
+                     value="http://localhost:11434" />
+              <button class="btn-discover" id="btn-ollama-discover" onclick="discoverOllamaModels()"
+                      style="align-self:flex-end;">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-width="1.2"/><path d="M8 8l2.5 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                Discover
+              </button>
+            </div>
+          </div>
+          <div id="ollama-discover-status" class="test-row" style="margin-top:0;margin-bottom:12px;"></div>
+          <div class="field" id="ollama-model-field" style="display:none;">
+            <label>Available models — select one</label>
+            <div class="ollama-model-chips" id="ollama-model-chips"></div>
+            <input type="hidden" id="inp-ollama-model" />
+          </div>
+          <div class="field" id="ollama-model-manual" style="display:none;">
+            <label>Or enter model name manually</label>
+            <input type="text" id="inp-ollama-model-manual" placeholder="mistral" />
+          </div>
+        </div>
+
+        <!-- Test + Continue -->
+        <button class="btn-test" id="btn-test-model" onclick="testModelConnection()">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M4.5 6.5l1.5 1.5 3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span id="btn-test-label">Test connection</span>
+          <div class="spinner" id="test-model-spinner" style="display:none;width:12px;height:12px;border-width:1.5px;"></div>
+        </button>
+
+        <div id="test-model-row" class="test-row">
+          <div class="test-dot pending" id="test-model-dot"></div>
+          <span id="test-model-msg">Contacting provider...</span>
+        </div>
+
+        <div id="alert-4" class="alert alert-error"></div>
+
+        <button class="btn-primary" id="btn-model-continue" onclick="doConfigureModel()">
+          <span id="btn-model-label">Continue →</span>
+          <div class="spinner" id="btn-model-spinner" style="display:none;"></div>
+        </button>
+        <div class="skip-link" onclick="skipModelSetup()">Skip — use server defaults</div>
+      </div>
+
     </div><!-- /card -->
 
     <div class="footer-hint">Your credentials are stored locally and never leave your machine.</div>
@@ -639,9 +996,10 @@
   }
 
   function updateStepIndicator(current) {
-    for (let i = 1; i <= 3; i++) {
+    for (let i = 1; i <= 4; i++) {
       const dot  = document.getElementById(`dot-${i}`);
       const line = document.getElementById(`line-${i}`);
+      if (!dot) continue;
       dot.className = 'step-dot';
       if (i < current) {
         dot.classList.add('done');
@@ -855,10 +1213,14 @@
         return;
       }
 
-      // Success — redirect to main app
-      label.textContent = `Connected to ${data.display_name} — launching...`;
-      await new Promise(r => setTimeout(r, 600));
-      window.location.href = '/';
+      // Success — proceed to model configuration step
+      label.textContent = `Connected to ${data.display_name}`;
+      await new Promise(r => setTimeout(r, 400));
+      btn.disabled = false;
+      label.textContent = 'Connect & Launch';
+      icon.style.display = 'block';
+      spin.style.display = 'none';
+      goStep(4);
 
     } catch (err) {
       showAlert('alert-3', 'Network error. Please try again.');
@@ -867,6 +1229,291 @@
       icon.style.display = 'block';
       spin.style.display = 'none';
     }
+  }
+
+  // ── Step 4: provider selection ─────────────────────────────────
+  const modelState = { provider: null, tested: false };
+  const ALL_PROVIDERS = ['openai','gemini','anthropic','xai','openrouter','azure','ollama'];
+  // Debounce timers for auto-fetch on key input
+  const _fetchTimers = {};
+
+  function selectProvider(btn) {
+    document.querySelectorAll('.provider-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    modelState.provider = btn.dataset.provider;
+    modelState.tested   = false;
+
+    ALL_PROVIDERS.forEach(p => {
+      document.getElementById(`fields-${p}`).classList.remove('show');
+    });
+    document.getElementById(`fields-${modelState.provider}`).classList.add('show');
+
+    // Reset test badge + alert
+    document.getElementById('test-model-row').classList.remove('show');
+    document.getElementById('btn-test-model').className = 'btn-test';
+    document.getElementById('btn-test-label').textContent = 'Test connection';
+    const alertEl = document.getElementById('alert-4');
+    alertEl.classList.remove('show', 'alert-error', 'alert-success');
+  }
+
+  // ── Live model list fetch (cloud providers) ────────────────────
+  function scheduleModelFetch(provider) {
+    clearTimeout(_fetchTimers[provider]);
+    _fetchTimers[provider] = setTimeout(() => fetchModelsFor(provider), 900);
+  }
+
+  async function fetchModelsFor(provider) {
+    const keyEl = document.getElementById(`inp-${provider}-key`);
+    const selEl = document.getElementById(`inp-${provider}-model`);
+    const hint  = document.getElementById(`${provider}-model-hint`);
+    const lbl   = document.getElementById(`${provider}-model-refresh-label`);
+    if (!keyEl || !selEl) return;
+    const key = keyEl.value.trim();
+    if (!key) {
+      // Key not entered yet — show a neutral prompt, not a "failed" message
+      if (hint) { hint.textContent = 'Enter your API key then click Load'; hint.className = 'model-select-hint'; }
+      return;
+    }
+
+    if (lbl) lbl.textContent = '…';
+    if (hint) { hint.textContent = 'Fetching live model list…'; hint.className = 'model-select-hint'; }
+
+    try {
+      const body = { provider, api_key: key };
+      const res  = await fetch('/api/setup/provider-models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      if (data.models && data.models.length) {
+        const current = selEl.value;
+        selEl.innerHTML = data.models.map(m =>
+          `<option value="${m}" ${m === current ? 'selected' : ''}>${m}</option>`
+        ).join('');
+        // Re-select current if still present, else pick first
+        if (!data.models.includes(current)) selEl.value = data.models[0];
+
+        if (hint) {
+          if (data.source === 'live') {
+            hint.textContent = `✓ ${data.models.length} models loaded live`;
+            hint.className   = 'model-select-hint live';
+          } else if (data.source === 'no_key') {
+            hint.textContent = 'Enter your API key then click Load';
+            hint.className   = 'model-select-hint';
+          } else {
+            // fallback — may include an error message from the server
+            const reason = data.error ? ` (${data.error})` : '';
+            hint.textContent = `${data.models.length} models (default list${reason})`;
+            hint.className   = 'model-select-hint';
+          }
+        }
+      }
+    } catch (_) {
+      if (hint) hint.textContent = 'Network error — using default model list';
+    } finally {
+      if (lbl) lbl.textContent = 'Load';
+    }
+  }
+
+  // ── Ollama model discovery ─────────────────────────────────────
+  async function discoverOllamaModels() {
+    const host    = document.getElementById('inp-ollama-host').value.trim() || 'http://localhost:11434';
+    const btn     = document.getElementById('btn-ollama-discover');
+    const status  = document.getElementById('ollama-discover-status');
+    const field   = document.getElementById('ollama-model-field');
+    const manual  = document.getElementById('ollama-model-manual');
+    const chips   = document.getElementById('ollama-model-chips');
+
+    btn.classList.add('loading');
+    btn.innerHTML = '<div class="spinner" style="width:11px;height:11px;border-width:1.5px;"></div> Searching…';
+    status.classList.add('show');
+    status.innerHTML = '<div class="test-dot pending"></div><span>Connecting to Ollama…</span>';
+
+    try {
+      const res  = await fetch(`/api/setup/ollama-models?host=${encodeURIComponent(host)}`);
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        status.innerHTML = `<div class="test-dot err"></div><span>${data.error || 'Could not reach Ollama'}</span>`;
+        field.style.display = 'none';
+        manual.style.display = 'block';
+        return;
+      }
+
+      if (!data.models.length) {
+        status.innerHTML = '<div class="test-dot err"></div><span>No models found — pull one first with <code>ollama pull mistral</code></span>';
+        manual.style.display = 'block';
+        return;
+      }
+
+      status.innerHTML = `<div class="test-dot ok"></div><span>Found ${data.models.length} model${data.models.length !== 1 ? 's' : ''}</span>`;
+      chips.innerHTML = data.models.map(m =>
+        `<button class="ollama-chip" onclick="selectOllamaChip(this,'${m}')">${m}</button>`
+      ).join('');
+      field.style.display = 'block';
+      manual.style.display = 'block';
+      // Auto-select first model
+      const firstChip = chips.querySelector('.ollama-chip');
+      if (firstChip) selectOllamaChip(firstChip, data.models[0]);
+
+    } catch (err) {
+      status.innerHTML = '<div class="test-dot err"></div><span>Network error — is Ollama running?</span>';
+      manual.style.display = 'block';
+    } finally {
+      btn.classList.remove('loading');
+      btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-width="1.2"/><path d="M8 8l2.5 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg> Discover';
+    }
+  }
+
+  function selectOllamaChip(chip, name) {
+    document.querySelectorAll('.ollama-chip').forEach(c => c.classList.remove('selected'));
+    chip.classList.add('selected');
+    document.getElementById('inp-ollama-model').value = name;
+    document.getElementById('inp-ollama-model-manual').value = name;
+  }
+
+  // ── Build config object from current form state ────────────────
+  function _getModelConfig() {
+    const p = modelState.provider;
+    if (!p) return null;
+
+    if (p === 'openai') return {
+      provider: 'openai',
+      api_key:  document.getElementById('inp-openai-key').value.trim(),
+      model:    document.getElementById('inp-openai-model').value,
+    };
+    if (p === 'gemini') return {
+      provider: 'gemini',
+      api_key:  document.getElementById('inp-gemini-key').value.trim(),
+      model:    document.getElementById('inp-gemini-model').value,
+    };
+    if (p === 'anthropic') return {
+      provider: 'anthropic',
+      api_key:  document.getElementById('inp-anthropic-key').value.trim(),
+      model:    document.getElementById('inp-anthropic-model').value,
+    };
+    if (p === 'xai') return {
+      provider: 'xai',
+      api_key:  document.getElementById('inp-xai-key').value.trim(),
+      model:    document.getElementById('inp-xai-model').value,
+    };
+    if (p === 'openrouter') return {
+      provider: 'openrouter',
+      api_key:  document.getElementById('inp-openrouter-key').value.trim(),
+      model:    document.getElementById('inp-openrouter-model').value,
+    };
+    if (p === 'azure') return {
+      provider:    'azure',
+      api_key:     document.getElementById('inp-azure-key').value.trim(),
+      model:       document.getElementById('inp-azure-model').value.trim(),
+      endpoint:    document.getElementById('inp-azure-endpoint').value.trim(),
+      api_version: document.getElementById('inp-azure-version').value.trim() || '2024-02-01',
+    };
+    if (p === 'ollama') {
+      // Prefer chip selection, then manual text input
+      const hidden = document.getElementById('inp-ollama-model').value.trim();
+      const manual = document.getElementById('inp-ollama-model-manual').value.trim();
+      return {
+        provider: 'ollama',
+        host:     document.getElementById('inp-ollama-host').value.trim() || 'http://localhost:11434',
+        model:    hidden || manual,
+      };
+    }
+    return null;
+  }
+
+  // ── Test connection ────────────────────────────────────────────
+  async function testModelConnection() {
+    if (!modelState.provider) {
+      showAlert('alert-4', 'Please select a provider first.'); return;
+    }
+    const cfg = _getModelConfig();
+    if (!cfg) return;
+    if (cfg.provider !== 'ollama' && !cfg.api_key) {
+      showAlert('alert-4', 'API key is required.'); return;
+    }
+    if (cfg.provider === 'azure' && !cfg.endpoint) {
+      showAlert('alert-4', 'Azure endpoint URL is required.'); return;
+    }
+    if (!cfg.model) {
+      showAlert('alert-4', 'Model name is required.'); return;
+    }
+
+    const btn     = document.getElementById('btn-test-model');
+    const label   = document.getElementById('btn-test-label');
+    const spinner = document.getElementById('test-model-spinner');
+    const row     = document.getElementById('test-model-row');
+    const dot     = document.getElementById('test-model-dot');
+    const msg     = document.getElementById('test-model-msg');
+
+    btn.className = 'btn-test loading';
+    label.textContent = 'Testing…';
+    spinner.style.display = 'block';
+    row.classList.add('show');
+    dot.className = 'test-dot pending';
+    msg.textContent = 'Contacting provider…';
+    document.getElementById('alert-4').classList.remove('show', 'alert-error', 'alert-success');
+
+    try {
+      const res  = await fetch('/api/setup/model', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(cfg),
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        dot.className     = 'test-dot err';
+        msg.textContent   = 'Connection failed';
+        btn.className     = 'btn-test';
+        label.textContent = 'Test connection';
+        spinner.style.display = 'none';
+        showAlert('alert-4', data.error || 'Could not connect to the provider.');
+        modelState.tested = false;
+        return;
+      }
+
+      dot.className     = 'test-dot ok';
+      msg.textContent   = `Connected — ${data.provider} / ${data.model}`;
+      btn.className     = 'btn-test ok';
+      label.textContent = '✓ Connected';
+      spinner.style.display = 'none';
+      modelState.tested = true;
+
+    } catch (err) {
+      dot.className     = 'test-dot err';
+      msg.textContent   = 'Network error';
+      btn.className     = 'btn-test';
+      label.textContent = 'Test connection';
+      spinner.style.display = 'none';
+      showAlert('alert-4', 'Network error. Please try again.');
+      modelState.tested = false;
+    }
+  }
+
+  // ── Continue → launch ─────────────────────────────────────────
+  async function doConfigureModel() {
+    if (!modelState.provider) {
+      showAlert('alert-4', 'Please select a provider first.'); return;
+    }
+    if (!modelState.tested) {
+      await testModelConnection();
+      if (!modelState.tested) return;
+    }
+    const btn   = document.getElementById('btn-model-continue');
+    const label = document.getElementById('btn-model-label');
+    const spin  = document.getElementById('btn-model-spinner');
+    btn.disabled = true;
+    label.textContent = 'Launching…';
+    spin.style.display = 'block';
+    await new Promise(r => setTimeout(r, 500));
+    window.location.href = '/';
+  }
+
+  function skipModelSetup() {
+    window.location.href = '/';
   }
 
   // ── Pre-fill saved credentials on load ─────────────────────────
