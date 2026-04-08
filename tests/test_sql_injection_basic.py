@@ -1,11 +1,18 @@
 """
 test_sql_injection_basic.py  —  Dataloom v3.0
-Security tests for SQL injection prevention.
+Security tests for SQL injection prevention in computed column expressions.
 
-Tests for vulnerabilities identified in the Master Review Prompt:
-  GAP-1: else_value validation to block subqueries and DDL
-  GAP-3: then value validation to block subqueries and DDL
-  GAP-4: CASE WHEN condition keyword blocking
+Covers the gaps identified in the Master Review Prompt:
+    GAP-1  ``else_value`` must reject subqueries and DDL keywords.
+    GAP-3  ``then`` value must reject subqueries, DDL, and bare column refs.
+    GAP-4  ``CASE WHEN`` condition must block SELECT, DDL, and SQL comments.
+
+All tests are purely unit-level — no database connection is required.
+
+Test classes:
+    TestElseValueValidation       — GAP-1: else_value content checks
+    TestThenValueValidation       — GAP-3: then value content checks
+    TestConditionKeywordBlocking  — GAP-4: condition keyword allowlist
 """
 
 import pytest
@@ -15,6 +22,7 @@ from sql_builder import build_sql
 
 @pytest.fixture(scope="module")
 def schema_map():
+    """Column schema for the five-table test database."""
     return {
         "fact_orders": [
             "order_id", "customer_id", "product_id", "employee_id",
@@ -29,6 +37,7 @@ def schema_map():
 
 @pytest.fixture(scope="module")
 def schema_types():
+    """Column type hints used by the type-aware validator paths."""
     return {
         "fact_orders": {
             "unit_price": "numeric", "freight": "numeric", "quantity": "integer",
@@ -39,6 +48,16 @@ def schema_types():
 
 
 def base_intent(**overrides):
+    """Return a minimal valid intent, optionally overriding specific keys.
+
+    Args:
+        **overrides: Keys to merge into the base intent dict. Nested values
+            are not deep-merged; the key is replaced entirely.
+
+    Returns:
+        A dict representing a complete, well-formed intent ready to pass
+        to ``validate_intent``.
+    """
     intent = {
         "metrics":           [{"metric": "total_revenue", "aggregation": "SUM",
                                "target_column": "unit_price", "distinct": False}],

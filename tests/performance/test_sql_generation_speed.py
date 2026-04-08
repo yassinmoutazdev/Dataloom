@@ -1,7 +1,12 @@
 """
-Performance tests for SQL generation speed.
+Dataloom SQL generation performance tests.
 
-Tests to ensure that SQL generation remains fast even with complex intents.
+Guards against latency regressions by benchmarking build_sql across four
+representative intent shapes: simple aggregate, multi-join complex query,
+window function, and CTE. Uses pytest-benchmark so results appear in CI
+artifacts alongside pass/fail status.
+
+Public functions: none (all entry points are pytest benchmark fixtures)
 """
 import pytest
 from validator import validate_intent, set_join_paths
@@ -68,10 +73,8 @@ class TestSqlGenerationSpeed:
             assert ok, f"Validation failed: {'; '.join(errors)}"
             return build_sql(intent, "postgresql")
         
-        # Benchmark the SQL generation
         sql, params = benchmark(generate_sql)
         
-        # Basic validation that the SQL was generated correctly
         assert "SELECT" in sql
         assert "SUM(fact_orders.unit_price)" in sql
 
@@ -117,10 +120,8 @@ class TestSqlGenerationSpeed:
             assert ok, f"Validation failed: {'; '.join(errors)}"
             return build_sql(intent, "postgresql")
         
-        # Benchmark the SQL generation
         sql, params = benchmark(generate_sql)
         
-        # Basic validation that the SQL was generated correctly
         assert "SELECT" in sql
         assert "SUM(fact_orders.unit_price)" in sql
         assert "COUNT(*)" in sql
@@ -170,10 +171,8 @@ class TestSqlGenerationSpeed:
             assert ok, f"Validation failed: {'; '.join(errors)}"
             return build_sql(intent, "postgresql")
         
-        # Benchmark the SQL generation
         sql, params = benchmark(generate_sql)
         
-        # Basic validation that the SQL was generated correctly
         assert "SELECT" in sql
         assert "RANK() OVER" in sql
         assert "SUM(" in sql
@@ -221,10 +220,8 @@ class TestSqlGenerationSpeed:
             assert ok, f"Validation failed: {'; '.join(errors)}"
             return build_sql(intent, "postgresql")
         
-        # Benchmark the SQL generation
         sql, params = benchmark(generate_sql)
         
-        # Basic validation that the SQL was generated correctly
         assert "SELECT" in sql
         assert "WITH spend_summary AS" in sql
         assert "high_spenders AS" in sql

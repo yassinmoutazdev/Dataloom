@@ -239,9 +239,10 @@ def build_sql(intent: dict, db_type: str = "postgresql") -> tuple[str, list]:
     select_parts.extend(case_when_parts)                 # 4A-7: CASE WHENs after dims
     select_parts.extend(window_parts)                    # 4B-1: window functions
     # ── 4B-4: scalar subquery (% of total) ───────────────────────
-    ssq_part = _build_scalar_subquery(
-        intent.get("scalar_subquery"), compiled, fact_table
-    )
+    ssq_dict = intent.get("scalar_subquery")
+    ssq_part = None
+    if ssq_dict:
+        ssq_part = _build_scalar_subquery(ssq_dict, compiled, fact_table)
     if ssq_part:
         select_parts.append(ssq_part)
     for c in compiled:
@@ -307,9 +308,10 @@ def build_sql(intent: dict, db_type: str = "postgresql") -> tuple[str, list]:
             params.append(val)
 
     # ── 4C-2: correlated_filter ───────────────────────────────────
-    cf_clause = _build_correlated_filter(
-        intent.get("correlated_filter"), fact_table
-    )
+    cf_dict = intent.get("correlated_filter")
+    cf_clause = None
+    if cf_dict:
+        cf_clause = _build_correlated_filter(cf_dict, fact_table)
     if cf_clause:
         where_parts.append(cf_clause)
 
@@ -610,7 +612,7 @@ def _build_scalar_subquery(
     ssq: dict,
     compiled_metrics: list,
     fact_table: str,
-) -> str:
+) -> str | None:
     """
     4B-4: Render a scalar subquery for percentage-of-total calculations.
     e.g.: 100.0 * total_revenue / NULLIF((SELECT SUM(unit_price) FROM fact_orders), 0)
@@ -640,7 +642,7 @@ def _build_scalar_subquery(
     return f"{expr} AS {alias}"
 
 
-def _build_correlated_filter(cf: dict, fact_table: str) -> str:
+def _build_correlated_filter(cf: dict, fact_table: str) -> str | None:
     """
     4C-2: Render a correlated WHERE clause:
     outer_col op (SELECT agg(col) FROM tbl WHERE tbl.key = outer_ref)

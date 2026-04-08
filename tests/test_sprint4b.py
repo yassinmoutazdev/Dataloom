@@ -2,7 +2,7 @@
 # test_sprint4b.py  —  Dataloom v3.0  Sprint 4B
 #
 # Tests for:
-#   4B-1  RANK / ROW_NUMBER / DENSE_RANK  (already implemented, regression)
+#   4B-1  RANK / ROW_NUMBER / DENSE_RANK  (regression against prior impl)
 #   4B-2  LAG / LEAD offset functions
 #   4B-3  Aggregate OVER with ROWS BETWEEN frame specs
 #   4B-4  Scalar subquery (% of total)
@@ -19,6 +19,7 @@ from sql_builder import build_sql
 
 # ── Shared schema ─────────────────────────────────────────────────────────────
 
+# Five-table schema; dim_categories added to support multi-hop join tests.
 SCHEMA = {
     "fact_orders":   ["order_id", "customer_id", "product_id", "employee_id",
                       "unit_price", "quantity", "order_date", "ship_date",
@@ -31,6 +32,7 @@ SCHEMA = {
     "dim_categories": ["category_id", "category_name"],
 }
 
+# Type hints used by dialect-specific paths in the builder.
 SCHEMA_TYPES = {
     "fact_orders":   {"unit_price": "numeric", "quantity": "integer", "freight": "numeric"},
     "dim_customers": {"age": "integer"},
@@ -39,6 +41,7 @@ SCHEMA_TYPES = {
 
 @pytest.fixture(autouse=True)
 def setup_joins():
+    """Register join paths for the five-table schema before every test."""
     set_join_paths({
         "fact_orders": {
             "dim_customers": "fact_orders.customer_id = dim_customers.customer_id",
@@ -122,7 +125,7 @@ class TestWindowFunctionsRankRegression:
                 "partition_by": [], "order_by": "total_revenue", "order_dir": "DESC",
             }],
         })
-        # order_by 'total_revenue' resolves to the full SUM expression
+        # The window ORDER BY resolves the metric alias to its full aggregate expression.
         assert "SUM(fact_orders.unit_price)" in q
 
     def test_missing_alias_rejected(self):
@@ -186,6 +189,7 @@ class TestLagLead:
                 "partition_by": [], "order_by": "order_date", "order_dir": "ASC",
             }],
         })
+        # LAG target resolves to the full aggregate expression, not the alias string.
         assert "SUM(fact_orders.unit_price)" in q
 
     def test_lag_with_partition_by(self):
@@ -407,7 +411,7 @@ class TestSetOperations:
                           "fact_table": "fact_orders", "group_by": [], "limit": 10},
             },
         })
-        # LIMIT must not appear in the sub-intents before INTERSECT
+        # LIMIT inside a set-operation operand would produce invalid SQL.
         parts = q.split("INTERSECT")
         assert "LIMIT" not in parts[0]
 

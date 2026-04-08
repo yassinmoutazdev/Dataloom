@@ -10,7 +10,8 @@ import os
 import sys
 import types
 
-# Bootstrap: mock LLM providers so we can import intent_parser without them
+# Bootstrap: mock LLM providers so we can import intent_parser without them.
+# This keeps the harness runnable in CI environments without Ollama or OpenAI.
 for mod in ("ollama", "openai"):
     if mod not in sys.modules:
         sys.modules[mod] = types.ModuleType(mod)
@@ -23,6 +24,7 @@ from sql_builder import build_sql
 
 # ── Shared schema ─────────────────────────────────────────────────────────────
 
+# Six-table schema; spend_summary is used as a CTE target in 4C cases.
 SCHEMA = {
     "fact_orders":    ["order_id", "customer_id", "product_id", "employee_id",
                        "unit_price", "quantity", "order_date", "ship_date",
@@ -45,21 +47,39 @@ _JOIN_PATHS = {
                        "dim_categories": "dim_products.category_id = dim_categories.category_id"},
     "dim_employees":  {"fact_orders": "fact_orders.employee_id = dim_employees.employee_id"},
     "dim_categories": {"dim_products": "dim_products.category_id = dim_categories.category_id"},
+    # spend_summary has no pre-defined join paths — it is always materialized via CTE.
     "spend_summary":  {},
 }
 
 
 @pytest.fixture(autouse=True)
 def setup_joins():
+    """Register join paths before every test in this file."""
     set_join_paths(_JOIN_PATHS)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _run_case(tc: dict):
-    """
-    Shared assertion logic. Returns (sql_text | None).
-    Asserts validation outcome, then SQL patterns when applicable.
+    """Run a single harness test case: validate intent, build SQL, assert patterns.
+
+    Handles both positive cases (``expect_valid=True``, the default) and
+    negative cases (``expect_valid=False``). For positive cases, asserts that
+    every pattern in ``must_contain`` is present and every pattern in
+    ``must_not_contain`` is absent from the generated SQL.
+
+    Args:
+        tc: Test-case dict with the following keys:
+            ``id``              — short identifier shown in failure messages.
+            ``description``     — human-readable description of what is tested.
+            ``intent``          — the raw intent dict to validate and build.
+            ``expect_valid``    — whether validation should succeed (default True).
+            ``db``              — dialect to build SQL for (default "postgresql").
+            ``must_contain``    — list of SQL substrings that must appear.
+            ``must_not_contain``— list of SQL substrings that must not appear.
+
+    Returns:
+        The generated SQL string, or ``None`` when ``expect_valid`` is False.
     """
     intent       = dict(tc["intent"])
     expect_valid = tc.get("expect_valid", True)
@@ -96,6 +116,7 @@ def _run_case(tc: dict):
 
 # ── Test case definitions (mirrors the original ALL_SUITES structure) ─────────
 
+# Baseline suite: core SQL features from Sprints 1–3.
 SUITE_BASELINE = [
     {"id": "BL-01", "description": "Basic SUM + GROUP BY",
      "intent": {"metrics": [{"metric": "rev", "aggregation": "SUM", "target_column": "unit_price"}],
@@ -130,6 +151,7 @@ SUITE_BASELINE = [
      "must_contain": ["HAVING", "COUNT(DISTINCT"]},
 ]
 
+# Sprint 4B suite: window functions, scalar subqueries, and set operations.
 SUITE_4B = [
     {"id": "4B-01", "description": "RANK() OVER with PARTITION BY",
      "intent": {"metrics": [{"metric": "rev", "aggregation": "SUM", "target_column": "unit_price"}],
@@ -221,6 +243,7 @@ SUITE_4B = [
      "must_contain": [], "expect_valid": False},
 ]
 
+# Sprint 4C suite: CTEs, correlated subqueries, EXTRACT, and interval filters.
 SUITE_4C = [
     {"id": "4C-01", "description": "CTE WITH block",
      "intent": {"metrics": [{"metric": "cnt", "aggregation": "COUNT", "target_column": "customer_id"}],
@@ -297,7 +320,8 @@ SUITE_4C = [
                 "correlated_filter": {"column": "dim_products.unit_price", "operator": ">",
                     "subquery": {"aggregation": "AVG", "target_column": "unit_price",
                                  "fact_table": "dim_products", "where_col": "category",
-                                 "outer_ref": "category"}}},  # ← not qualified
+                                 # outer_ref must be table-qualified to prevent ambiguity
+                                 "outer_ref": "category"}}},
      "must_contain": [], "expect_valid": False},
 
     {"id": "4C-10", "description": "Scalar subquery multiply_by float OK",
@@ -313,19 +337,23 @@ SUITE_4C = [
 # ── Parametrized test functions ───────────────────────────────────────────────
 
 def _make_test_id(tc: dict) -> str:
+    """Format a pytest test ID from a test-case dict."""
     return f"{tc['id']}: {tc['description']}"
 
 
 @pytest.mark.parametrize("tc", SUITE_BASELINE, ids=[_make_test_id(t) for t in SUITE_BASELINE])
 def test_baseline(tc):
+    """Run all baseline (Sprint 1–3) regression cases."""
     _run_case(tc)
 
 
 @pytest.mark.parametrize("tc", SUITE_4B, ids=[_make_test_id(t) for t in SUITE_4B])
 def test_sprint4b(tc):
+    """Run all Sprint 4B (window functions, scalar subqueries, set ops) cases."""
     _run_case(tc)
 
 
 @pytest.mark.parametrize("tc", SUITE_4C, ids=[_make_test_id(t) for t in SUITE_4C])
 def test_sprint4c(tc):
+    """Run all Sprint 4C (CTEs, correlated subqueries, EXTRACT, intervals) cases."""
     _run_case(tc)

@@ -10,10 +10,10 @@
 #   4A-6  Standalone HAVING COUNT DISTINCT
 #   4A-7  computed_columns[] CASE WHEN
 #
-#   SMOKE  Official 5-question smoke test (per audit plan)
-#   REGRESSION  Sprint 1+2+3 regression battery
-#   CROSS  Cross-feature compound queries (≥3 patterns in one intent)
-#   DIALECT  Dialect compatibility matrix per new feature
+#   SMOKE      Official 5-question smoke test (per audit plan)
+#   REGRESSION Sprint 1+2+3 regression battery
+#   CROSS      Cross-feature compound queries (≥3 patterns in one intent)
+#   DIALECT    Dialect compatibility matrix per new feature
 # =============================================================================
 
 import copy
@@ -23,6 +23,7 @@ from sql_builder import build_sql
 
 # ─── Schema ───────────────────────────────────────────────────────────────────
 
+# Five-table schema extended with campaign and temporal columns for 4A tests.
 SCHEMA_MAP = {
     "fact_orders": [
         "order_id", "customer_id", "product_id", "employee_id", "campaign_id",
@@ -41,6 +42,7 @@ SCHEMA_MAP = {
     "dim_campaigns": ["campaign_id", "source", "clicks", "conversions", "month"],
 }
 
+# Type hints for columns that need dialect-specific arithmetic (4A-4).
 SCHEMA_TYPES = {
     "fact_orders": {
         "order_id": "varchar", "customer_id": "varchar", "product_id": "varchar",
@@ -69,12 +71,21 @@ _JOIN_PATHS = {
 
 @pytest.fixture(autouse=True)
 def setup_joins():
+    """Register join paths before every test in this file."""
     set_join_paths(_JOIN_PATHS)
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def base_intent(**overrides):
+    """Return a minimal valid intent, merging ``overrides`` at the top level.
+
+    Args:
+        **overrides: Keys to set or replace in the base intent dict.
+
+    Returns:
+        A complete intent dict ready to pass to ``validate_intent``.
+    """
     i = {
         "metrics":          [{"metric": "total_revenue", "aggregation": "SUM",
                               "target_column": "unit_price", "distinct": False}],
@@ -113,12 +124,24 @@ def run_invalid(intent_raw):
 
 
 def assert_sql_contains(sql, *needles):
+    """Assert that every needle appears in ``sql`` (case-insensitive).
+
+    Args:
+        sql: The generated SQL string to inspect.
+        *needles: One or more substrings that must be present.
+    """
     sql_upper = sql.upper()
     for needle in needles:
         assert needle.upper() in sql_upper, f"SQL missing '{needle}':\n{sql}"
 
 
 def assert_sql_not_contains(sql, *needles):
+    """Assert that no needle appears in ``sql`` (case-insensitive).
+
+    Args:
+        sql: The generated SQL string to inspect.
+        *needles: One or more substrings that must be absent.
+    """
     sql_upper = sql.upper()
     for needle in needles:
         assert needle.upper() not in sql_upper, f"SQL should NOT contain '{needle}':\n{sql}"
@@ -292,6 +315,7 @@ class TestExtractExpressions:
         assert_sql_contains(sql, "strftime")
 
     def test_extract_bypasses_schema_validation(self):
+        # EXTRACT expressions are not column refs, so schema lookup is skipped.
         sql, _ = run_valid(base_intent(
             group_by=["EXTRACT(quarter FROM fact_orders.order_date) AS qtr"],
         ))
@@ -427,6 +451,7 @@ class TestNtileAndPercentile:
         assert_sql_contains(sql, "PERCENTILE_CONT(0.9)")
 
     def test_percentile_cont_sqlite_fallback_subquery(self):
+        # SQLite lacks native PERCENTILE_CONT; the builder emits a ROW_NUMBER subquery instead.
         sql, _ = run_valid(base_intent(
             metrics=[{
                 "metric": "median_order_value", "aggregation": "PERCENTILE_CONT",
@@ -816,9 +841,10 @@ class TestRegressionBattery:
         )
 
     def test_r5_multi_hop_bfs_auto_repairs_join(self):
+        # BFS join-path repair should insert the missing dim_products join automatically.
         sql, _ = run_valid(base_intent(
             group_by=["dim_products.category"],
-            joins=[],  # auto-repair should add the join
+            joins=[],
         ))
         assert_sql_contains(sql, "JOIN dim_products ON")
 
@@ -908,6 +934,7 @@ class TestDialectMatrix:
         assert_sql_contains(sql, "PERCENTILE_CONT(0.5)", "WITHIN GROUP")
 
     def test_percentile_cont_sqlite_fallback_no_within_group(self):
+        # SQLite emits a ROW_NUMBER subquery — WITHIN GROUP must not appear.
         sql, _ = run_valid(base_intent(
             metrics=[{"metric": "med", "aggregation": "PERCENTILE_CONT",
                       "percentile": 0.5, "target_column": "unit_price", "order_dir": "ASC"}],

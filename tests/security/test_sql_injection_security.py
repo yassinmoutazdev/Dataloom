@@ -1,10 +1,12 @@
 """
-Security tests for SQL injection prevention.
+Dataloom SQL injection prevention tests.
 
-Tests for vulnerabilities identified in the Master Review Prompt:
-- GAP-1: else_value validation to block subqueries and DDL
-- GAP-3: then value validation to block subqueries and DDL  
-- GAP-4: is_expression keyword blocking
+Covers the three injection surface areas identified in the Master Review Prompt:
+  GAP-1: else_value content validation blocks subqueries and DDL keywords.
+  GAP-3: CASE WHEN then value validation blocks subqueries and DDL keywords.
+  GAP-4: CASE WHEN condition validation blocks SELECT, DROP, and SQL comments.
+
+Public functions: base_intent
 """
 import pytest
 from validator import validate_intent
@@ -39,7 +41,17 @@ def schema_types():
 
 
 def base_intent(**overrides):
-    """Create a base intent with common defaults."""
+    """Return a minimal valid intent with sensible defaults, optionally overridden.
+
+    Provides a base for security test cases so each test only declares the
+    fields that exercise the specific injection vector under test.
+
+    Args:
+        **overrides: Any intent fields to override on the default dict.
+
+    Returns:
+        dict: A complete intent dict suitable for validate_intent and build_sql.
+    """
     intent = {
         "metrics":          [{"metric":"total_revenue","aggregation":"SUM",
                               "target_column":"unit_price","distinct":False}],

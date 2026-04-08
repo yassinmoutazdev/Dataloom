@@ -1,7 +1,11 @@
 """
-Unit tests for the validator module.
+Dataloom validator unit tests.
 
-Tests individual validation functions in isolation to ensure they work correctly.
+Tests individual validation rules in isolation, covering constant definitions,
+required-field presence, fact-table lookup, aggregation allowlists, filter
+operators, join types, and HAVING clause operators.
+
+Public functions: none (all entry points are pytest test methods)
 """
 import pytest
 from validator import (
@@ -76,31 +80,37 @@ class TestValidatorConstants:
 
     def test_valid_aggregations(self):
         """Test that valid aggregations include expected values."""
+        # Allowlist used to reject LLM-emitted aggregation names not supported by build_sql.
         expected = {"SUM", "COUNT", "AVG", "MAX", "MIN", "NTILE", "PERCENTILE_CONT"}
         assert expected.issubset(VALID_AGGREGATIONS)
 
     def test_valid_operators(self):
         """Test that valid operators include expected values."""
+        # Allowlist used to block unsupported or injection-prone filter operators.
         expected = {"=", ">", "<", ">=", "<=", "LIKE", "IN", "IS NULL", "IS NOT NULL"}
         assert expected.issubset(VALID_OPERATORS)
 
     def test_valid_having_ops(self):
         """Test that valid HAVING operators include expected values."""
+        # Narrower allowlist than VALID_OPERATORS — LIKE and IN are not valid in HAVING.
         expected = {"=", ">", "<", ">=", "<="}
         assert expected.issubset(VALID_HAVING_OPS)
 
     def test_valid_order_dirs(self):
         """Test that valid order directions include expected values."""
+        # Allowlist guards against arbitrary SQL injection via the order_dir field.
         expected = {"DESC", "ASC"}
         assert expected.issubset(VALID_ORDER_DIRS)
 
     def test_valid_join_types(self):
         """Test that valid join types include expected values."""
+        # Allowlist prevents unsupported join variants (e.g. CROSS) from reaching build_sql.
         expected = {"INNER", "LEFT", "RIGHT", "FULL"}
         assert expected.issubset(VALID_JOIN_TYPES)
 
     def test_valid_window_functions(self):
         """Test that valid window functions include expected values."""
+        # Allowlist scoped to functions with known OVER() rendering logic in build_sql.
         expected = {
             "RANK", "ROW_NUMBER", "DENSE_RANK",
             "LAG", "LEAD",

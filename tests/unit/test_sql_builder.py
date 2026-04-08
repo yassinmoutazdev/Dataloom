@@ -1,7 +1,11 @@
 """
-Unit tests for the sql_builder module.
+Dataloom sql_builder unit tests.
 
-Tests individual SQL generation functions in isolation to ensure they work correctly.
+Tests build_sql in isolation across the core clause types: SELECT aggregations,
+WHERE filters with parameterised values, GROUP BY, JOINs, ORDER BY / LIMIT,
+HAVING, LEFT JOIN anti-joins, and per-dialect output (postgresql, mysql, sqlite).
+
+Public functions: none (all entry points are pytest test methods)
 """
 import pytest
 from sql_builder import build_sql
@@ -51,12 +55,11 @@ class TestBuildSqlBasic:
         
         sql, params = build_sql(intent, "postgresql")
         
-        # Check that the SQL contains expected elements
         assert "SELECT" in sql
         assert "SUM(fact_orders.unit_price)" in sql
         assert "fact_orders" in sql
         assert "LIMIT 10" in sql
-        assert len(params) == 0  # No parameters for this query
+        assert len(params) == 0
 
     def test_build_count_with_filter(self, sample_schema):
         """Test building a COUNT query with a filter."""
@@ -78,7 +81,6 @@ class TestBuildSqlBasic:
         
         sql, params = build_sql(intent, "postgresql")
         
-        # Check that the SQL contains expected elements
         assert "SELECT" in sql
         assert "COUNT(*)" in sql
         assert "WHERE" in sql
@@ -106,7 +108,6 @@ class TestBuildSqlBasic:
         
         sql, params = build_sql(intent, "postgresql")
         
-        # Check that the SQL contains expected elements
         assert "SELECT" in sql
         assert "SUM(fact_orders.unit_price)" in sql
         assert "GROUP BY" in sql
@@ -132,7 +133,6 @@ class TestBuildSqlBasic:
         
         sql, params = build_sql(intent, "postgresql")
         
-        # Check that the SQL contains expected elements
         assert "SELECT" in sql
         assert "SUM(fact_orders.unit_price)" in sql
         assert "JOIN" in sql
@@ -163,7 +163,6 @@ class TestBuildSqlAdvanced:
         
         sql, params = build_sql(intent, "postgresql")
         
-        # Check that the SQL contains expected elements
         assert "SELECT" in sql
         assert "ORDER BY" in sql
         assert "DESC" in sql
@@ -189,7 +188,6 @@ class TestBuildSqlAdvanced:
         
         sql, params = build_sql(intent, "postgresql")
         
-        # Check that the SQL contains expected elements
         assert "SELECT" in sql
         assert "HAVING" in sql
         assert "COUNT(DISTINCT fact_orders.order_id)" in sql
@@ -216,7 +214,6 @@ class TestBuildSqlAdvanced:
         
         sql, params = build_sql(intent, "postgresql")
         
-        # Check that the SQL contains expected elements
         assert "SELECT" in sql
         assert "LEFT JOIN" in sql
         assert "IS NULL" in sql
@@ -241,9 +238,9 @@ class TestBuildSqlAdvanced:
         
         sql, params = build_sql(intent, "mysql")
         
-        # Check that the SQL contains expected elements
         assert "SELECT" in sql
-        # MySQL-specific syntax might be different, but basic structure should be similar
+        # MySQL dialect diverges from PostgreSQL on timestamp functions and
+        # parameterisation; this smoke-check confirms the builder does not crash.
 
     def test_build_sqlite_dialect_query(self, sample_schema):
         """Test building a query with SQLite dialect."""
@@ -265,6 +262,6 @@ class TestBuildSqlAdvanced:
         
         sql, params = build_sql(intent, "sqlite")
         
-        # Check that the SQL contains expected elements
         assert "SELECT" in sql
-        # SQLite-specific syntax might be different, but basic structure should be similar
+        # SQLite uses a ROW_NUMBER fallback for PERCENTILE_CONT and lacks some
+        # timestamp functions; this smoke-check confirms the builder does not crash.

@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+"""
+CLI entry point for Dataloom.
+
+Owns the interactive terminal loop: connects to the database, loads the schema,
+accepts natural-language questions, drives the full intent→validate→SQL→execute
+pipeline, and handles pagination and per-session model selection.
+
+Depends on: schema, intent_parser, validator, sql_builder, memory.
+"""
 
 import os
 import sys
@@ -12,14 +21,17 @@ from tabulate import tabulate
 from schema import get_schema, save_description
 from intent_parser import (
     parse_intent, parse_retry, parse_validation_retry,
-    is_vague_question, has_ranking_intent, _strip_meta,
+    is_vague_question, _strip_meta,
 )
 from validator import validate_intent, normalize_joins
 from sql_builder import build_sql
-from summarizer import summarize
 from memory import IntentMemory
 
+
+# ── ANSI colour helpers ──────────────────────────────────────────────────────
+
 class C:
+    """ANSI escape codes used throughout the CLI for coloured output."""
     RESET   = "\033[0m"
     BOLD    = "\033[1m"
     DIM     = "\033[2m"
@@ -29,61 +41,49 @@ class C:
     RED     = "\033[91m"
     WHITE   = "\033[97m"
 
+
 def print_info(msg):    print(f"  {C.CYAN}ℹ{C.RESET}  {msg}")
 def print_success(msg): print(f"  {C.GREEN}✓{C.RESET}  {msg}")
 def print_warn(msg):    print(f"  {C.YELLOW}⚠{C.RESET}  {msg}")
 def print_error(msg):   print(f"  {C.RED}✗{C.RESET}  {msg}")
 def divider():          print(f"  {C.DIM}{'─' * 54}{C.RESET}")
 
+
+# ── Display helpers ──────────────────────────────────────────────────────────
+
 def banner():
+    """Print the Dataloom ASCII-art welcome banner."""
     print(f"""
 {C.CYAN}{C.BOLD}╔══════════════════════════════════════════════════════╗
 ║                                                      ║
 ║   ██████╗ ██████╗      █████╗ ██╗   v2.2            ║
 ║   ██╔══██╗██╔══██╗    ██╔══██╗██║                   ║
-║   ██║  ██║██████╔╝    ███████║██║                   ║
-║   ██║  ██║██╔══██╗    ██╔══██║██║                   ║
-║   ██████╔╝██████╔╝    ██║  ██║██║                   ║
+║   ██║  ██║██████╔╝    ███████║SB║                   ║
+║   ██║  ██║██╔══██╗    ██╔══██║SB║                   ║
+║   ██████╔╝██████╔╝    ██║  ██║SB║                   ║
 ║   ╚═════╝ ╚═════╝     ╚═╝  ╚═╝╚═╝                   ║
 ║                                                      ║
 ║    Deterministic SQL · Self-Correcting · v2.2        ║
 ╚══════════════════════════════════════════════════════╝{C.RESET}
 """)
 
-def print_intent(intent):
+
+def print_intent(intent: dict) -> None:
+    """Pretty-print a parsed intent dict for debug visibility."""
     print(f"\n  {C.DIM}Parsed intent:{C.RESET}")
     print(f"    {C.CYAN}{json.dumps(intent, indent=4)}{C.RESET}\n")
 
-def print_sql(sql, label="Generated SQL"):
+
+def print_sql(sql: str, label: str = "Generated SQL") -> None:
+    """Print a SQL string with syntax highlighting and a labelled header."""
     print(f"  {C.DIM}{label}:{C.RESET}")
     for line in sql.split("\n"):
         print(f"    {C.YELLOW}{line}{C.RESET}")
     print()
 
-def spinner_thread(stop_event, message):
-    import itertools
-    frames = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
-    for f in itertools.cycle(frames):
-        if stop_event.is_set():
-            break
-        sys.stdout.write(f"\r  {C.CYAN}{f}{C.RESET}  {message}...")
-        sys.stdout.flush()
-        time.sleep(0.08)
-    sys.stdout.write("\r" + " " * 50 + "\r")
-    sys.stdout.flush()
 
-def run_with_spinner(message, fn, *args, **kwargs):
-    stop = threading.Event()
-    t = threading.Thread(target=spinner_thread, args=(stop, message), daemon=True)
-    t.start()
-    try:
-        result = fn(*args, **kwargs)
-    finally:
-        stop.set()
-        t.join()
-    return result
-
-def help_text():
+def help_text() -> None:
+    """Print the list of available CLI commands."""
     print(f"""
   {C.BOLD}Commands:{C.RESET}
   {C.CYAN}  schema{C.RESET}          Show database schema
@@ -97,7 +97,69 @@ def help_text():
   {C.CYAN}  exit{C.RESET}            Quit
 """)
 
+
+# ── Spinner ──────────────────────────────────────────────────────────────────
+
+def spinner_thread(stop_event: threading.Event, message: str) -> None:
+    """Animate a braille spinner in-place until stop_event is set.
+
+    Args:
+        stop_event: Threading event that signals the spinner to exit.
+        message: Label shown beside the spinner (e.g. "Parsing intent").
+    """
+    import itertools
+    frames = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
+    for f in itertools.cycle(frames):
+        if stop_event.is_set():
+            break
+        sys.stdout.write(f"\r  {C.CYAN}{f}{C.RESET}  {message}...")
+        sys.stdout.flush()
+        time.sleep(0.08)
+    sys.stdout.write("\r" + " " * 50 + "\r")
+    sys.stdout.flush()
+
+
+def run_with_spinner(message: str, fn, *args, **kwargs):
+    """Run fn(*args, **kwargs) on the main thread while displaying a spinner.
+
+    The spinner runs in a daemon thread and is guaranteed to stop — and the
+    terminal line cleared — before this function returns, even if fn raises.
+
+    Args:
+        message: Human-readable label shown beside the spinner.
+        fn: Callable to execute.
+        *args: Positional arguments forwarded to fn.
+        **kwargs: Keyword arguments forwarded to fn.
+
+    Returns:
+        Whatever fn returns.
+
+    Raises:
+        Any exception raised by fn (re-raised after the spinner stops).
+    """
+    stop = threading.Event()
+    t = threading.Thread(target=spinner_thread, args=(stop, message), daemon=True)
+    t.start()
+    try:
+        result = fn(*args, **kwargs)
+    finally:
+        stop.set()
+        t.join()
+    return result
+
+
+# ── Database + config ────────────────────────────────────────────────────────
+
 def connect_db():
+    """Open a read-only psycopg2 connection using credentials from .env.
+
+    Returns:
+        An open psycopg2 connection with autocommit off and readonly=True.
+
+    Raises:
+        SystemExit: If DB_NAME is missing from the environment.
+        psycopg2.Error: If the connection attempt fails.
+    """
     load_dotenv()
     config = {
         "host":     os.getenv("DB_HOST", "localhost"),
@@ -115,7 +177,16 @@ def connect_db():
     print_success("Connected.")
     return conn
 
-def get_model_config():
+
+def get_model_config() -> dict:
+    """Build the model config dict from environment variables.
+
+    Reads MODEL_PROVIDER and the corresponding model/key env vars.
+    Defaults to Ollama with model 'mistral' if MODEL_PROVIDER is unset.
+
+    Returns:
+        Dict with at minimum 'provider' and 'model' keys.
+    """
     load_dotenv()
     provider = os.getenv("MODEL_PROVIDER", "ollama").lower()
     if provider == "openai":
@@ -129,14 +200,47 @@ def get_model_config():
         "model": os.getenv("OLLAMA_MODEL", "mistral")
     }
 
-def run_query(conn, sql, params=None):
+
+def run_query(conn, sql: str, params=None) -> tuple[list, list]:
+    """Execute a parameterised SQL statement and return all rows.
+
+    Args:
+        conn: An open psycopg2 connection.
+        sql: The SQL string to execute. Must use %s placeholders.
+        params: Optional list of parameter values; defaults to an empty list.
+
+    Returns:
+        A (headers, rows) tuple where headers is a list of column name
+        strings and rows is a list of row tuples.
+
+    Raises:
+        psycopg2.Error: On any database-level execution failure.
+    """
     cursor = conn.cursor()
     cursor.execute(sql, params or [])
     rows = cursor.fetchall()
     headers = [desc[0] for desc in cursor.description]
     return headers, rows
 
-def display_results(headers, rows, page=1, page_size=20, total=None):
+
+# ── Result display ───────────────────────────────────────────────────────────
+
+def display_results(
+    headers: list,
+    rows: list,
+    page: int = 1,
+    page_size: int = 20,
+    total: int | None = None,
+) -> None:
+    """Render a page of query results as a table and print a row-count footer.
+
+    Args:
+        headers: Column name strings for the table header row.
+        rows: The subset of rows for this page (already sliced by the caller).
+        page: Current page number (1-indexed), used for the footer message.
+        page_size: Rows per page, used to calculate page count in the footer.
+        total: Total number of rows across all pages; defaults to len(rows).
+    """
     if not rows:
         print_warn("No results returned.")
         return
@@ -153,15 +257,26 @@ def display_results(headers, rows, page=1, page_size=20, total=None):
         print_info(f"{total} row{'s' if total != 1 else ''} returned.")
 
 
+# ── Model selection ──────────────────────────────────────────────────────────
+
 def select_model(model_config: dict) -> dict:
-    """
-    On startup, fetch available models and let user pick one.
-    Falls back to config default if Ollama is unreachable or user skips.
+    """Prompt the user to choose from installed models at startup.
+
+    For OpenAI, confirms the configured model name and allows overriding it.
+    For Ollama, lists all installed models and lets the user pick by number
+    or partial name. Falls back to the configured default if Ollama is
+    unreachable or the user presses Enter without choosing.
+
+    Args:
+        model_config: The model config dict produced by get_model_config().
+
+    Returns:
+        The (possibly updated) model config dict with 'model' set to the
+        user's selection.
     """
     provider = model_config.get("provider", "ollama")
 
     if provider == "openai":
-        # For OpenAI just confirm which model is set
         print_info(f"OpenAI mode — using model: {C.CYAN}{model_config['model']}{C.RESET}")
         change = input(f"  Press Enter to continue or type a different model name: ").strip()
         if change:
@@ -172,13 +287,18 @@ def select_model(model_config: dict) -> dict:
     try:
         import ollama as _ollama
         response = _ollama.list()
-        # Handle both old and new ollama SDK response formats
+        # Handle both old (dict) and new (object with .models) SDK response formats
         if hasattr(response, "models"):
             models = response.models
             model_names = [m.model for m in models] if models else []
         elif isinstance(response, dict):
             models = response.get("models", [])
-            model_names = [m.get("name") or m.get("model", "") for m in models]
+            # .get() can return None for either key, so filter before calling .lower()
+            model_names = [
+                name for name in
+                (m.get("name") or m.get("model") for m in models)
+                if name is not None
+            ]
         else:
             model_names = []
 
@@ -192,12 +312,12 @@ def select_model(model_config: dict) -> dict:
             print(f"    {marker}  {i}. {name}")
         print(f"  {C.DIM}(current: {model_config['model']}){C.RESET}\n")
 
-        raw = input(f"  Pick a model (number or name) or press Enter to keep current: ").strip()
+        raw_input = input(f"  Pick a model (number or name) or press Enter to keep current: ").strip()
 
-        if not raw:
+        if not raw_input:
             return model_config
 
-        # Accept number or name
+        raw: str = raw_input
         if raw.isdigit():
             idx = int(raw) - 1
             if 0 <= idx < len(model_names):
@@ -205,8 +325,11 @@ def select_model(model_config: dict) -> dict:
             else:
                 print_warn("Invalid number, keeping current model.")
         else:
-            # Accept partial name match
-            matches = [m for m in model_names if raw.lower() in m.lower()]
+            # Accept partial name match; model_names contains no None values here
+            # raw is guaranteed to be non-empty string here due to earlier check
+            if raw is None or raw == "":
+                return model_config  # Should never happen, but for type safety
+            matches = [m for m in model_names if m is not None and raw.lower() in m.lower()]
             if len(matches) == 1:
                 model_config["model"] = matches[0]
             elif len(matches) > 1:
@@ -221,7 +344,16 @@ def select_model(model_config: dict) -> dict:
         print_warn(f"Could not fetch Ollama models: {e}. Using default.")
         return model_config
 
-def main():
+
+# ── Main loop ────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    """Start the Dataloom CLI session.
+
+    Connects to the database, loads the schema, selects a model, then enters
+    the interactive question loop. Each iteration runs the full
+    intent→validate→SQL→execute pipeline and paginates results.
+    """
     banner()
 
     try:
@@ -232,7 +364,8 @@ def main():
 
     print_info("Loading schema...")
     try:
-        schema_text, schema_map, schema_types = get_schema(conn)
+        # get_schema returns four values: text, map, types, and join-path dict
+        schema_text, schema_map, schema_types, join_paths = get_schema(conn)
         print_success(f"Schema loaded. {len(schema_map)} tables found.")
     except Exception as e:
         print_error(f"Schema load failed: {e}")
@@ -244,9 +377,9 @@ def main():
 
     memory   = IntentMemory(max_size=5)
     PAGE_SIZE = 20
-    last_all_rows = []
-    last_headers  = []
-    current_page  = 0
+    last_all_rows: list = []
+    last_headers: list  = []
+    current_page        = 0
 
     divider()
     print(f"\n  {C.WHITE}Ready. Ask anything or type {C.CYAN}help{C.WHITE}.{C.RESET}\n")
@@ -316,11 +449,14 @@ def main():
                 print()
         elif cmd == "describe":
             table  = input("  Table name: ").strip()
+            # Empty string is the correct sentinel for "no column specified";
+            # save_description expects str, not Optional[str], so pass "" directly
             column = input("  Column name (blank for table description): ").strip()
             desc   = input("  Description: ").strip()
             if table and desc:
-                save_description(table, column or None, desc)
-                schema_text, schema_map, schema_types = get_schema(conn)
+                save_description(table, column, desc)
+                # Reload all four schema values after a metadata update
+                schema_text, schema_map, schema_types, join_paths = get_schema(conn)
                 print_success("Saved and schema reloaded.")
             else:
                 print_warn("Table name and description are required.")
@@ -330,7 +466,7 @@ def main():
 
             # 1. Pre-screen for vague questions before calling the model
             if is_vague_question(raw):
-                print(f"\n  {C.YELLOW}?{C.RESET}  Could you be more specific? For example: \'What is the total revenue this month?\' or \'How many orders were placed last week?\'\n")
+                print(f"\n  {C.YELLOW}?{C.RESET}  Could you be more specific? For example: 'What is the total revenue this month?' or 'How many orders were placed last week?'\n")
                 continue
 
             # 2. Parse intent
@@ -360,7 +496,7 @@ def main():
                 print(f"  {C.YELLOW}⚠{C.RESET}  Medium confidence — I made an assumption. "
                       f"Verify the result matches your intent.\n")
 
-            # Post-validation: if metric is too generic and question is short, ask for clarification
+            # Post-validation: generic metric on a short question is likely underspecified
             metric = (intent.get("metric") or "").lower()
             generic_metrics = {"count", "total", "number", "sum", "avg", "value", "amount"}
             if metric in generic_metrics and len(raw.split()) <= 5:
@@ -418,13 +554,11 @@ def main():
 
             # 7. Execute — up to 2 auto-retries on DB failure
             headers, all_rows = None, None
-            last_error = None
             for attempt in range(2):
                 try:
                     headers, all_rows = run_with_spinner("Running query", run_query, conn, sql, params)
                     break
                 except Exception as exec_error:
-                    last_error = exec_error
                     conn.rollback()
                     if attempt == 0:
                         print_warn(f"Query failed: {exec_error}")
@@ -458,32 +592,18 @@ def main():
                 continue
 
             # 8. Store and paginate
-            last_all_rows = all_rows
-            last_headers  = headers
-            current_page  = 0
-            first_page    = all_rows[:PAGE_SIZE]
-            display_results(headers, first_page,
-                            page=1,
-                            page_size=PAGE_SIZE,
-                            total=len(all_rows))
+            if headers is not None and all_rows is not None:
+                last_all_rows = all_rows
+                last_headers = headers
+                current_page = 0
+                first_page = all_rows[:PAGE_SIZE]
+                display_results(headers, first_page, page=1, page_size=PAGE_SIZE, total=len(all_rows))
 
-            # 9. Summarize
-            if all_rows:
-                try:
-                    summary = run_with_spinner(
-                        "Summarizing",
-                        summarize,
-                        raw, first_page, headers, model_config,
-                        total_rows=len(all_rows)
-                    )
-                    print(f"\n  {C.GREEN}→{C.RESET}  {summary}\n")
-                except Exception:
-                    pass
-
-            # 10. Save to memory
+            # 9. Save to memory
             memory.add(intent, raw)
 
     conn.close()
+
 
 if __name__ == "__main__":
     main()

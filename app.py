@@ -1,29 +1,33 @@
 """
-app.py — Flask web server for Dataloom v2.10
+Flask web server and HTTP API layer for Dataloom.
 
-Session architecture:
-  Each browser session maintains its own database contexts.
-  Switching databases parks the current context and loads the target,
-  keeping query history isolated per database.
+Owns session lifecycle, all REST routes, and the multi-provider model
+configuration layer. Every browser session maintains isolated database
+contexts; switching databases parks the current context and loads the target
+so query history never bleeds across databases.
 
-  _session_store[sid] = {
-      "last_seen":    float,
-      "model_config": dict,
-      "active_db":    str | None,
-      "contexts": {
-          "<db_name>": {
-              "conn":        connection,
-              "db_type":     str,
-              "schema_text": str,
-              "schema_map":  dict,
-              "schema_types":dict,
-              "join_paths":  dict,
-              "memory":      IntentMemory,
-              "history":     list,
-              "credentials": dict,
-          }
-      }
-  }
+In-memory session shape (keyed by Flask session cookie ``sid``):
+
+    _session_store[sid] = {
+        "last_seen":    float,
+        "model_config": dict,        # provider, model, api_key, pinned_models
+        "active_db":    str | None,
+        "contexts": {
+            "<db_name>": {
+                "conn":         connection,
+                "db_type":      str,
+                "schema_text":  str,
+                "schema_map":   dict,
+                "schema_types": dict,
+                "join_paths":   dict,
+                "memory":       IntentMemory,
+                "history":      list,
+                "credentials":  dict,
+            }
+        }
+    }
+
+Depends on: db_connector, schema, memory, core, history_store, utils (optional).
 """
 
 import os
@@ -51,18 +55,25 @@ try:
     from utils import export_csv, export_excel, make_export_filename
     HAS_UTILS = True
 except ImportError:
+    def export_csv(*_a, **_kw) -> bytes:  # type: ignore[misc]
+        raise RuntimeError("utils module not available — cannot export CSV")
+    def export_excel(*_a, **_kw) -> bytes:  # type: ignore[misc]
+        raise RuntimeError("utils module not available — cannot export Excel")
+    def make_export_filename(*_a, **_kw) -> str:  # type: ignore[misc]
+        raise RuntimeError("utils module not available — cannot generate export filename")
     HAS_UTILS = False
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.secret_key = os.getenv("FLASK_SECRET", os.urandom(24).hex())
 
-# ── Security config ───────────────────────────────────────────────
+# Hard cap on request body size — prevents large payloads from reaching route logic.
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024   # 16 KB max request body
 
-# Rate limiting: max queries per session per hour
+# Sliding-window rate limit applied per session inside the /api/query route.
 RATE_LIMIT          = int(os.getenv("RATE_LIMIT", "20"))
 RATE_LIMIT_WINDOW   = 3600   # seconds
 
+# Sessions idle longer than this are eligible for purge by _schedule_purge().
 SESSION_TTL_SECONDS = 3600
 _session_store: dict[str, dict] = {}
 
@@ -70,19 +81,18 @@ _session_store: dict[str, dict] = {}
 # ── Model config ──────────────────────────────────────────────────
 
 def _default_model_config() -> dict:
-    """
-    Return a model config seeded from environment variables.
+    """Build a model config dict seeded from environment variables.
 
-    Priority order (highest → lowest):
-      1. Session model_config  — set by POST /api/setup/model (step 4 of the
-         setup wizard). Already stored directly on sess["model_config"], so
-         this function is never re-called for an established session.
-      2. Env vars (MODEL_PROVIDER / *_API_KEY / *_MODEL)  — legacy / headless
-         deployments that skip the setup wizard.
+    Called exactly once per new session by ``_get_session()``. Any subsequent
+    ``POST /api/setup/model`` call overwrites ``sess["model_config"]`` in place,
+    so env-var values only act as a fallback for headless / CI deployments that
+    skip the setup wizard.
 
-    Because _get_session() only calls this function once (when creating a brand-
-    new session entry), any subsequent /api/setup/model call that updates
-    sess["model_config"] in-place automatically takes precedence.
+    Returns:
+        A model config dict containing at minimum ``provider``, ``model``, and
+        ``pinned_models``. Cloud providers also include ``api_key``; Ollama
+        includes ``host``; Azure additionally includes ``endpoint`` and
+        ``api_version``.
     """
     provider = os.getenv("MODEL_PROVIDER", "ollama").lower()
     if provider == "openai":
@@ -119,12 +129,22 @@ def _default_model_config() -> dict:
 
 
 def _test_model_connection(provider: str, config: dict) -> None:
-    """
-    Fire a minimal live call to verify provider credentials.
-    Raises RuntimeError (or provider SDK exceptions) on failure.
-    API keys are read from *config* only — never from env vars — so this
-    function is safe to call with wizard-supplied credentials before they
-    are persisted to the session.
+    """Fire a minimal live call to verify provider credentials before storing them.
+
+    Credentials are read exclusively from ``config`` — never from env vars — so
+    this is safe to call with wizard-supplied values before they are persisted
+    to the session.
+
+    Args:
+        provider: One of ``"openai"``, ``"gemini"``, ``"anthropic"``, ``"xai"``,
+            ``"openrouter"``, ``"azure"``, or ``"ollama"``.
+        config: Provider config dict. Must contain ``"model"`` and, for cloud
+            providers, ``"api_key"``. Azure also requires ``"endpoint"``.
+
+    Raises:
+        RuntimeError: If the provider package is missing, credentials are
+            invalid, the host is unreachable, or the requested model does not
+            exist on the Ollama instance.
     """
     # ── OpenAI-compatible providers (share the same code path) ────
     _OAI_COMPAT = {
@@ -156,7 +176,7 @@ def _test_model_connection(provider: str, config: dict) -> None:
 
     if provider == "anthropic":
         try:
-            import anthropic as _ant
+            import anthropic as _ant # type: ignore
         except ImportError:
             raise RuntimeError("'anthropic' package not installed.  Run: pip install anthropic")
         client = _ant.Anthropic(api_key=config["api_key"])
@@ -215,19 +235,16 @@ def _test_model_connection(provider: str, config: dict) -> None:
 
 # ── Session helpers ───────────────────────────────────────────────
 
-# ── OPT 3: Background session cleanup ────────────────────────────
-# _purge_stale_sessions() previously ran on every call to _get_session(),
-# adding dict iteration overhead to every hot-path request. With tens of
-# concurrent sessions that's measurable. Moving it to a background timer
-# (every 10 minutes) keeps the hot path clean while still bounding memory.
-#
-# Risk: a stale session may linger up to PURGE_INTERVAL_SECONDS longer
-# than SESSION_TTL_SECONDS before its DB connection is closed. Acceptable
-# at this scale — connections are per-session and already idle by then.
+# How often the background timer fires to evict expired sessions.
+# Stale sessions may linger up to this long past SESSION_TTL_SECONDS before
+# their DB connections are closed — acceptable because connections are idle
+# by that point. Moving purge off the hot path avoids dict-iteration overhead
+# on every incoming request.
 _PURGE_INTERVAL_SECONDS = 600  # 10 minutes
 
 
-def _purge_stale_sessions():
+def _purge_stale_sessions() -> None:
+    """Close DB connections and remove sessions that have exceeded SESSION_TTL_SECONDS."""
     cutoff = time.time() - SESSION_TTL_SECONDS
     stale  = [sid for sid, s in _session_store.items() if s["last_seen"] < cutoff]
     for sid in stale:
@@ -254,6 +271,14 @@ _schedule_purge()   # Kick off the first timer at module load
 
 
 def _get_session() -> dict:
+    """Return the server-side session dict for the current request, creating it if absent.
+
+    Assigns a UUID to the Flask cookie ``sid`` on first call. Touching
+    ``last_seen`` on every call keeps active sessions from being evicted.
+
+    Returns:
+        The mutable session dict from ``_session_store``.
+    """
     sid = session.get("sid")
     if not sid:
         sid = str(uuid.uuid4())
@@ -273,6 +298,7 @@ def _get_session() -> dict:
 
 
 def _get_active_context() -> dict | None:
+    """Return the context dict for the active database, or None if none is selected."""
     sess   = _get_session()
     active = sess.get("active_db")
     if not active:
@@ -281,7 +307,18 @@ def _get_active_context() -> dict | None:
 
 
 def _clean_db_name(raw: str) -> str:
-    """'olist_logistics' → 'Olist Logistics'. Overridable via DB_DISPLAY_NAME env var."""
+    """Convert a raw database identifier into a human-readable display name.
+
+    Replaces underscores and hyphens with spaces and title-cases the result,
+    e.g. ``"olist_logistics"`` → ``"Olist Logistics"``. The ``DB_DISPLAY_NAME``
+    env var overrides this transformation entirely when set.
+
+    Args:
+        raw: The internal database name as stored in the session.
+
+    Returns:
+        A space-separated, title-cased display string, or the env-var override.
+    """
     override = os.getenv("DB_DISPLAY_NAME", "").strip()
     if override:
         return override
@@ -289,7 +326,31 @@ def _clean_db_name(raw: str) -> str:
 
 
 def _build_context(conn, db_type: str, credentials: dict) -> dict:
+    """Construct a fully initialised database context dict for a live connection.
+
+    Calls ``get_schema`` to populate the schema maps and registers join paths
+    with the sql_builder via ``init_join_paths``.
+
+    Args:
+        conn: An open database connection (psycopg2, MySQLdb, or sqlite3).
+        db_type: One of ``"postgresql"``, ``"mysql"``, or ``"sqlite"``.
+        credentials: The connection parameters used to establish ``conn``,
+            stored so the session can reconnect on failure.
+
+    Returns:
+        A context dict ready to be stored under ``sess["contexts"][db_name]``.
+    """
+    if conn is None:
+        raise RuntimeError("_build_context() called with a None connection object")
     schema_text, schema_map, schema_types, join_paths = get_schema(conn, db_type)
+    if schema_text is None:
+        raise RuntimeError("get_schema() returned None for schema_text")
+    if schema_map is None:
+        raise RuntimeError("get_schema() returned None for schema_map")
+    if schema_types is None:
+        raise RuntimeError("get_schema() returned None for schema_types")
+    if join_paths is None:
+        raise RuntimeError("get_schema() returned None for join_paths")
     init_join_paths(join_paths)
     return {
         "conn":        conn,
@@ -305,6 +366,7 @@ def _build_context(conn, db_type: str, credentials: dict) -> dict:
 
 
 def _session_is_ready() -> bool:
+    """Return True only when the session has an active database context loaded."""
     sess   = _get_session()
     active = sess.get("active_db")
     return bool(active and active in sess["contexts"])
@@ -314,6 +376,7 @@ def _session_is_ready() -> bool:
 
 @app.route("/")
 def index():
+    """Serve the main application shell, redirecting to /setup if no DB is connected."""
     if not _session_is_ready():
         return redirect(url_for("setup"))
     return send_from_directory("templates", "index.html")
@@ -321,6 +384,7 @@ def index():
 
 @app.route("/setup")
 def setup():
+    """Serve the multi-step setup wizard."""
     return send_from_directory("templates", "setup.html")
 
 
@@ -329,13 +393,25 @@ def setup():
 @app.route("/api/setup/status")
 def setup_status():
     """Return saved server credentials so the wizard can pre-fill on revisit."""
-    creds = load_saved_credentials()
+    creds = load_saved_credentials() or {}
     return jsonify({"has_saved_credentials": bool(creds), "credentials": creds})
 
 
 @app.route("/api/setup/discover", methods=["POST"])
 def setup_discover():
-    """Given server credentials, return list of accessible databases."""
+    """Return the list of databases accessible with the supplied server credentials.
+
+    Args (JSON body):
+        db_type: One of ``"postgresql"``, ``"mysql"``, or ``"sqlite"``.
+        host: Database server hostname.
+        port: Server port as a string.
+        user: Database username.
+        password: Database password.
+
+    Returns:
+        JSON ``{ databases: [str] }`` on success, or ``{ error: str }`` with
+        HTTP 400 on connection failure or invalid ``db_type``.
+    """
     data     = request.json or {}
     db_type  = data.get("db_type", "").lower()
     host     = data.get("host", "localhost")
@@ -354,7 +430,22 @@ def setup_discover():
 
 @app.route("/api/setup/connect", methods=["POST"])
 def setup_connect():
-    """Connect to a specific database, load schema, set as active context."""
+    """Connect to a specific database, load its schema, and set it as the active context.
+
+    On success, server credentials (not the database name) are persisted to
+    ``.env`` so the wizard can pre-fill them on the next visit. The database
+    name itself is intentionally not saved — users select it interactively.
+
+    Args (JSON body):
+        db_type: One of ``"postgresql"``, ``"mysql"``, or ``"sqlite"``.
+        host, port, user, password: Server credentials (PostgreSQL / MySQL).
+        database: Target database name (PostgreSQL / MySQL).
+        path: File path (SQLite only).
+
+    Returns:
+        JSON ``{ ok, db_name, display_name, db_type, tables }`` on success, or
+        ``{ error: str }`` with HTTP 400 / 500 on failure.
+    """
     data     = request.json or {}
     db_type  = data.get("db_type", "").lower()
     host     = data.get("host", "localhost")
@@ -380,6 +471,9 @@ def setup_connect():
         conn = connect_with_credentials(db_type, host, port, actual_dbname, user, password)
     except Exception as e:
         return jsonify({"error": f"Connection failed: {e}"}), 400
+
+    if conn is None:
+        return jsonify({"error": "Connection failed: driver returned no connection object"}), 500
 
     try:
         ctx = _build_context(conn, db_type, credentials)
@@ -418,18 +512,25 @@ def setup_connect():
 
 @app.route("/api/setup/model", methods=["POST"])
 def setup_model():
-    """
-    Step 4 of the setup wizard — configure the AI model provider.
+    """Validate and store AI provider credentials at the end of the setup wizard.
 
-    Accepts:  { provider, api_key, model, host, endpoint, api_version }
-    Validates: fires a minimal live LLM call to confirm the credentials work.
-    Stores:   saves to sess["model_config"] (server-side only).
-    Returns:  { success: true, provider, model }  or  { error: "..." }
+    Fires a minimal live LLM call via ``_test_model_connection`` before
+    accepting credentials. The ``api_key`` is stored only in the server-side
+    session dict — it is never echoed back to the client and never written to
+    disk. Any existing ``pinned_models`` list in the session is preserved so
+    a reconfigure mid-session does not discard the user's pin selections.
 
-    Security:
-      - api_key is stored only in the Flask session (server-side dict).
-      - It is NEVER echoed back to the client in this or any subsequent response.
-      - It is NEVER written to disk.
+    Args (JSON body):
+        provider: One of the VALID_PROVIDERS identifiers.
+        api_key: Provider API key (not required for Ollama).
+        model: Model name or deployment name (Azure).
+        host: Ollama base URL (Ollama only, default ``http://localhost:11434``).
+        endpoint: Azure OpenAI resource URL (Azure only).
+        api_version: Azure REST API version (Azure only, default ``2024-02-01``).
+
+    Returns:
+        JSON ``{ success: true, provider, model }`` on success, or
+        ``{ error: str }`` with HTTP 400 on validation or connection failure.
     """
     data        = request.json or {}
     provider    = data.get("provider",    "").lower().strip()
@@ -479,10 +580,19 @@ def setup_model():
 
 @app.route("/api/setup/ollama-models")
 def setup_ollama_models():
-    """
-    Discover locally available Ollama models for a given host.
-    Called by the setup wizard to populate the model chip picker.
-    GET /api/setup/ollama-models?host=http://localhost:11434
+    """Return the list of models available on a given Ollama host.
+
+    Hits the Ollama REST API directly rather than the Python SDK to avoid the
+    versioned ``@1.0.0`` suffix that ``model`` field carries in newer SDK
+    releases. The ``name`` field always returns the short form expected by
+    ``ollama chat``.
+
+    Args (query string):
+        host: Ollama base URL. Defaults to ``http://localhost:11434``.
+
+    Returns:
+        JSON ``{ models: [str] }`` on success, or ``{ error: str }`` with
+        HTTP 400 if the host is unreachable.
     """
     import urllib.request as _req
     import json as _json
@@ -501,15 +611,25 @@ def setup_ollama_models():
 
 @app.route("/api/setup/provider-models", methods=["POST"])
 def setup_provider_models():
-    """
-    Fetch the live model list for a provider using wizard-supplied credentials.
-    Called during step 4 (before /api/setup/model) so the model dropdown
-    can be populated with real data before the user clicks "Test connection".
+    """Return a live or fallback model list for a provider during the setup wizard.
 
-    Accepts:  { provider, api_key, endpoint?, api_version? }
-    Returns:  { models: [...], source: "live" | "fallback" }
+    Called by the wizard's model-selector dropdown before the user clicks
+    "Test connection", so the list is populated before credentials are stored.
+    The ``api_key`` is used only for this request and is never persisted.
 
-    The api_key is used here only for the request and is NOT stored.
+    Falls back to a curated static list when the live fetch fails or when no
+    key has been entered yet. Returns ``source: "live"`` or ``"fallback"`` so
+    the frontend can display an appropriate hint.
+
+    Args (JSON body):
+        provider: Provider identifier string.
+        api_key: Provider API key (optional — omitting returns the fallback list).
+        endpoint: Azure resource URL (Azure only).
+        api_version: Azure API version (Azure only).
+
+    Returns:
+        JSON ``{ models: [str], source: str }`` and optionally ``{ error: str }``
+        when a live fetch was attempted but failed.
     """
     import json as _json
 
@@ -621,7 +741,12 @@ def setup_provider_models():
 
 @app.route("/api/databases")
 def list_databases():
-    """List all databases the user has connected to in this session."""
+    """Return all database contexts connected in the current session.
+
+    Returns:
+        JSON array of objects with ``db_name``, ``display_name``, ``db_type``,
+        ``tables``, ``active``, and ``history_count`` fields.
+    """
     sess   = _get_session()
     active = sess.get("active_db")
     return jsonify([
@@ -639,7 +764,18 @@ def list_databases():
 
 @app.route("/api/databases/switch", methods=["POST"])
 def switch_database():
-    """Switch the active database. Chat display clears; history is preserved per DB."""
+    """Change the active database context for the current session.
+
+    The previous context is parked but not destroyed; its schema, memory, and
+    history remain in the session and are restored if the user switches back.
+
+    Args (JSON body):
+        db_name: The internal name of a database already connected this session.
+
+    Returns:
+        JSON ``{ ok, db_name, display_name, db_type, tables }`` on success, or
+        ``{ error: str }`` with HTTP 400 / 404 on failure.
+    """
     data    = request.json or {}
     db_name = data.get("db_name", "").strip()
 
@@ -673,7 +809,20 @@ def add_database():
 
 @app.route("/api/export", methods=["POST"])
 def api_export():
-    """Export query results as CSV or Excel."""
+    """Stream query results to the client as a downloadable CSV or Excel file.
+
+    Falls back to CSV silently when ``openpyxl`` is not installed and the
+    requested format is ``xlsx``.
+
+    Args (JSON body):
+        headers: Ordered list of column name strings.
+        records: List of row dicts matching the header keys.
+        format: ``"csv"`` (default) or ``"xlsx"``.
+
+    Returns:
+        A file attachment response, or ``{ error: str }`` with HTTP 400 / 500
+        when data is missing or the export module is unavailable.
+    """
     data    = request.get_json(force=True) or {}
     headers = data.get("headers", [])
     records = data.get("records", [])
@@ -713,7 +862,24 @@ def api_export():
 
 @app.route("/api/query", methods=["POST"])
 def query():
-    ctx = _get_active_context()
+    """Run a natural-language question through the full pipeline and return results.
+
+    Enforces a per-session sliding-window rate limit (``RATE_LIMIT`` queries per
+    ``RATE_LIMIT_WINDOW`` seconds). Connection errors from the database are
+    surfaced with a user-friendly reconnect prompt; all other pipeline errors
+    return a generic rephrasing suggestion so internal details are not leaked.
+
+    Args (JSON body):
+        question: The natural-language question string.
+
+    Returns:
+        JSON pipeline result containing ``success``, ``sql``, ``headers``,
+        ``records``, ``total_rows``, ``confidence``, and optionally ``error``.
+        HTTP 429 when the rate limit is exceeded.
+    """
+    sess = _get_session()
+    ctx  = _get_active_context()
+
     if not ctx:
         return jsonify({"error": "No database connected. Please complete setup."}), 400
 
@@ -721,8 +887,6 @@ def query():
     question = (data.get("question") or "").strip()
     if not question:
         return jsonify({"error": "No question provided"}), 400
-
-    sess = _get_session()
 
     # ── Rate limiting ─────────────────────────────────────────────
     now = time.time()
@@ -765,6 +929,13 @@ def query():
             "confidence": "low",
         })
 
+    if result is None:
+        return jsonify({
+            "success": False,
+            "error": "Pipeline returned no result. Try rephrasing your question.",
+            "confidence": "low",
+        })
+
     # Append to in-memory + disk history on success
     if result["success"]:
         entry = {
@@ -786,9 +957,11 @@ def query():
         ctx["conn"] = fresh
     result.pop("_reconnected", None)
 
-    if result.get("rows") and result.get("headers"):
-        result["records"]    = [dict(zip(result["headers"], row)) for row in result["rows"]]
-        result["total_rows"] = len(result["rows"])
+    rows    = result.get("rows") or []
+    hdrs    = result.get("headers") or []
+    if rows and hdrs:
+        result["records"]    = [dict(zip(hdrs, row)) for row in rows]
+        result["total_rows"] = len(rows)
     else:
         result["records"]    = []
         result["total_rows"] = 0
@@ -801,6 +974,12 @@ def query():
 
 @app.route("/api/schema")
 def schema_route():
+    """Return the active database schema as text and a structured table map.
+
+    Returns:
+        JSON ``{ text: str, tables: { table: [col, ...] } }``, or
+        ``{ error: str }`` with HTTP 400 if no database is connected.
+    """
     ctx = _get_active_context()
     if not ctx:
         return jsonify({"error": "No database connected"}), 400
@@ -812,15 +991,25 @@ def schema_route():
 
 @app.route("/api/history")
 @app.route("/api/history/<db_name>")
-def history(db_name: str = None):
-    """Return query history — merges in-memory and disk-backed store."""
+def history(db_name: str | None = None):
+    """Return the query history for a database, merging in-memory and disk records.
+
+    The disk-backed store is preferred when a ``sid`` cookie is present, as it
+    survives server restarts. Falls back to the in-memory list otherwise.
+
+    Args:
+        db_name: Database to retrieve history for. Defaults to the active DB.
+
+    Returns:
+        JSON array of history entry dicts, newest first, capped at 50 items.
+    """
     sess   = _get_session()
     target = db_name or sess.get("active_db")
     if not target:
         return jsonify([])
     sid = session.get("sid")
     if sid:
-        entries = history_store.get(sid, target, limit=50)
+        entries = history_store.get(sid, target, limit=50) or []
     elif target in sess["contexts"]:
         entries = list(reversed(sess["contexts"][target]["history"][-50:]))
     else:
@@ -830,7 +1019,10 @@ def history(db_name: str = None):
 
 @app.route("/api/clear", methods=["POST"])
 def clear_memory():
-    """Clear conversation memory for the active database (history log preserved)."""
+    """Clear the LLM conversation memory for the active database.
+
+    Resets follow-up query context without touching the visible history log.
+    """
     ctx = _get_active_context()
     if ctx:
         ctx["memory"].clear()
@@ -839,7 +1031,7 @@ def clear_memory():
 
 @app.route("/api/history/clear", methods=["POST"])
 def clear_history():
-    """Wipe query history — both in-memory and on disk — for the active DB."""
+    """Wipe the query history for the active database from both memory and disk."""
     sess   = _get_session()
     target = sess.get("active_db")
     sid    = session.get("sid")
@@ -852,6 +1044,14 @@ def clear_history():
 
 @app.route("/api/status")
 def status():
+    """Return a summary of the current session state.
+
+    Used by the frontend on load and after database switches to sync UI state.
+
+    Returns:
+        JSON with ``configured``, ``db_name``, ``display_name``, ``db_type``,
+        ``tables``, ``model``, ``provider``, and ``databases`` fields.
+    """
     sess   = _get_session()
     ctx    = _get_active_context()
     active = sess.get("active_db")
@@ -869,10 +1069,19 @@ def status():
 
 @app.route("/api/models")
 def models():
-    """
-    Return only the user's pinned model list for the active session.
-    Zero API calls — instant session read.
-    The full provider catalog is available via GET /api/models/catalog.
+    """Return the session's pinned model list without hitting any provider API.
+
+    This is the hot-path called every time the model dropdown opens, so it
+    must be fast. The full provider catalog is available via
+    ``GET /api/models/catalog``, which is called only when the user opens the
+    Manage Models panel.
+
+    Back-compat: sessions created before ``pinned_models`` was introduced get
+    a synthetic list seeded from the active model.
+
+    Returns:
+        JSON ``{ models: [str], current: str }`` where ``models`` contains
+        only the user's pinned selections.
     """
     sess    = _get_session()
     cfg     = sess["model_config"]
@@ -894,10 +1103,19 @@ def models():
 
 @app.route("/api/models/catalog")
 def models_catalog():
-    """
-    Return the full live model catalog for the active session's provider.
-    Also returns the current pinned list so the frontend can render eye-toggles.
-    Called only when the user opens the Manage Models panel — never on dropdown open.
+    """Return the full live model catalog for the session's active provider.
+
+    Fetches from the provider API when credentials are available, falling back
+    to a curated static list on failure. Always merges any pinned models that
+    are not in the catalog (e.g. custom Ollama tags) so the frontend can render
+    eye-toggle state correctly for every pinned entry.
+
+    Called only when the user opens the Manage Models panel — never on a
+    routine dropdown open.
+
+    Returns:
+        JSON ``{ models: [str], current: str, pinned: [str], provider: str }``
+        and optionally ``{ error: str }`` when Ollama is unreachable.
     """
     import json as _json
 
@@ -998,7 +1216,14 @@ def models_catalog():
 
 @app.route("/api/models/pin", methods=["POST"])
 def pin_model():
-    """Add a model to the session's pinned list."""
+    """Add a model to the session's pinned list.
+
+    Args (JSON body):
+        model: The model identifier string to pin.
+
+    Returns:
+        JSON ``{ pinned: [str] }`` reflecting the updated list.
+    """
     data  = request.json or {}
     model = data.get("model", "").strip()
     if not model:
@@ -1013,7 +1238,17 @@ def pin_model():
 
 @app.route("/api/models/unpin", methods=["POST"])
 def unpin_model():
-    """Remove a model from the session's pinned list. The active model cannot be unpinned."""
+    """Remove a model from the session's pinned list.
+
+    The active model cannot be unpinned; attempting to do so returns HTTP 400.
+
+    Args (JSON body):
+        model: The model identifier string to unpin.
+
+    Returns:
+        JSON ``{ pinned: [str] }`` reflecting the updated list, or
+        ``{ error: str }`` with HTTP 400 if the model is currently active.
+    """
     data  = request.json or {}
     model = data.get("model", "").strip()
     if not model:
@@ -1029,9 +1264,17 @@ def unpin_model():
 
 @app.route("/api/schema/descriptions", methods=["GET", "POST"])
 def schema_descriptions():
-    """
-    GET  — return the current schema_descriptions.json.
-    POST — save new descriptions and hot-reload schema for the active context.
+    """Read or write the human-authored column description file.
+
+    ``GET`` returns the current ``schema_descriptions.json`` contents.
+    ``POST`` saves new descriptions and immediately hot-reloads the schema
+    for the active session context so the LLM sees the updated hints without
+    requiring a reconnect.
+
+    Returns:
+        GET: JSON object (empty ``{}`` when the file does not exist).
+        POST: ``{ ok: true }`` on success, or ``{ error: str }`` with HTTP 500
+        on write or schema-reload failure.
     """
     path = os.path.join(os.path.dirname(__file__), "schema_descriptions.json")
 

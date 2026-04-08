@@ -1,15 +1,16 @@
 """
-Tests for CASE WHEN deduplication functionality.
+Dataloom CASE WHEN deduplication tests.
 
-Reproduces the exact defect observed in Stress Test Q2:
-  LLM emits the CASE WHEN expression in BOTH group_by[] AND computed_columns[]
-  with include_in_group_by: true  →  expression appeared twice in SELECT
-  and twice in GROUP BY.
+Reproduces and guards against the defect observed in Stress Test Q2, where the
+LLM emitted the CASE WHEN expression in both group_by[] and computed_columns[]
+with include_in_group_by=True, causing the expression to appear twice in SELECT
+and twice in GROUP BY.
 
-Fix location:
-  sql_builder.py  build_sql()  — deduplication guard strips raw CASE entries
-                                 from group_by[] when a computed_column with
-                                 include_in_group_by=True already covers them
+Fix location: sql_builder.py build_sql() — the deduplication guard strips raw
+CASE entries from group_by[] whenever a computed_column with
+include_in_group_by=True already covers them.
+
+Public functions: base_intent, run_test_case
 """
 import copy
 import pytest
@@ -40,7 +41,17 @@ def schema_types():
 
 
 def base_intent(**overrides):
-    """Create a base intent with common defaults."""
+    """Return a minimal valid intent with sensible defaults, optionally overridden.
+
+    Provides a base for deduplication test cases so each test only declares
+    the fields relevant to the scenario under test.
+
+    Args:
+        **overrides: Any intent fields to override on the default dict.
+
+    Returns:
+        dict: A complete intent dict suitable for validate_intent and build_sql.
+    """
     intent = {
         "metrics":          [{"metric":"total_revenue","aggregation":"SUM",
                               "target_column":"unit_price","distinct":False}],
@@ -64,7 +75,24 @@ def base_intent(**overrides):
 def run_test_case(intent, schema_map, schema_types, db_type="postgresql",
                   must_contain=None, must_not_contain=None, count_occurrences=None,
                   expect_fail=False):
-    """Helper function to run a test case."""
+    """Validate an intent and assert SQL content and occurrence constraints.
+
+    Runs validate_intent followed by build_sql, then checks substring presence,
+    absence, and exact occurrence counts. All comparisons are case-insensitive.
+
+    Args:
+        intent: Parsed query intent dict.
+        schema_map: Table-to-columns mapping used by the validator.
+        schema_types: Column type hints used by the validator.
+        db_type: SQL dialect passed to build_sql. Defaults to "postgresql".
+        must_contain: Substrings that must appear in the generated SQL.
+        must_not_contain: Substrings that must not appear in the generated SQL.
+        count_occurrences: Dict mapping substring to expected occurrence count.
+        expect_fail: When True, asserts that validation fails and returns early.
+
+    Raises:
+        pytest.Failed: If any assertion on validation or SQL content is not met.
+    """
     try:
         ok, errs = validate_intent(intent, schema_map, schema_types)
         if expect_fail:
@@ -96,7 +124,7 @@ def run_test_case(intent, schema_map, schema_types, db_type="postgresql",
         pytest.fail(f"Exception occurred: {e}")
 
 
-# The exact defect from Stress Test Q2
+# Computed column definition reproducing the Stress Test Q2 scenario.
 WEEKEND_CC = [{
     "alias": "day_type",
     "when_clauses": [
@@ -106,7 +134,8 @@ WEEKEND_CC = [{
     "include_in_group_by": True,
 }]
 
-# Raw CASE WHEN string the LLM incorrectly put into group_by[]
+# Raw CASE WHEN string the LLM incorrectly put into group_by[] — used to
+# simulate the duplicate-entry defect that the deduplication guard must strip.
 BAD_GROUP_BY_ENTRY = (
     "CASE WHEN EXTRACT(dow FROM fact_orders.order_date) IN (0, 6) "
     "THEN 'Weekend' ELSE 'Weekday' END"

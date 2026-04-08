@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """
-Shared test fixtures for the Dataloom test suite.
+Shared pytest fixtures for the Dataloom v3.0 test suite.
+
+Provides session-scoped schema and join-path fixtures that are used across
+all sprint test files. Join paths are re-applied before each test via an
+autouse fixture to prevent state leakage between files.
 """
+
 import pytest
 import sys
 import os
 
-# Add the project root to the path so we can import modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from validator import set_join_paths
@@ -14,11 +18,11 @@ from validator import set_join_paths
 
 @pytest.fixture(scope="session")
 def sample_schema():
-    """Sample schema for testing."""
+    """Return the canonical five-table schema used across unit test files."""
     return {
         "fact_orders": [
             "order_id", "customer_id", "product_id", "employee_id",
-            "order_date", "ship_date", "quantity", "unit_price", 
+            "order_date", "ship_date", "quantity", "unit_price",
             "freight", "status", "region"
         ],
         "dim_customers": [
@@ -35,7 +39,7 @@ def sample_schema():
 
 @pytest.fixture(scope="session")
 def sample_join_paths():
-    """Sample join paths for testing."""
+    """Return join conditions for the canonical five-table schema."""
     return {
         "fact_orders": {
             "dim_customers": "fact_orders.customer_id = dim_customers.customer_id",
@@ -56,7 +60,11 @@ def sample_join_paths():
 
 @pytest.fixture(autouse=True)
 def setup_join_paths(sample_join_paths):
-    """Automatically set up join paths for each test."""
+    """Apply join paths before every test and clear them on teardown.
+
+    Declared autouse so every test in the suite gets a clean, consistent
+    join-path state regardless of import order or cross-file pollution.
+    """
     set_join_paths(sample_join_paths)
     yield
-    # Cleanup if needed
+    set_join_paths({})

@@ -204,7 +204,7 @@ def get_db_type() -> str:
     return db_type
 
 
-def connect(db_type: str = None):
+def connect(db_type: str | None = None):
     """Establish a read-only connection to the configured database.
     
     Args:
@@ -212,6 +212,9 @@ def connect(db_type: str = None):
     
     Returns:
         Tuple of (connection_object, database_type_string).
+
+    Raises:
+        ValueError: If db_type resolves to an unsupported value.
     """
     db_type = db_type or get_db_type()
 
@@ -223,6 +226,9 @@ def connect(db_type: str = None):
 
     elif db_type == "sqlite":
         return _connect_sqlite(), "sqlite"
+
+    else:
+        raise ValueError(f"Unsupported db_type: '{db_type}'. Choose from: {SUPPORTED_TYPES}")
 
 
 def _connect_postgresql():
@@ -303,12 +309,22 @@ def reconnect(credentials: dict):
     
     Returns:
         Fresh connection object.
+
+    Raises:
+        RuntimeError: If credentials dict is None or empty.
+        ValueError: If db_type is not a supported value.
     """
+    if not credentials:
+        raise RuntimeError("reconnect() called with empty or None credentials")
     db_type = credentials.get("db_type", "postgresql").lower()
+    if db_type not in SUPPORTED_TYPES:
+        raise ValueError(f"Unsupported db_type in credentials: '{db_type}'")
 
     if db_type == "sqlite":
         import sqlite3
         path = credentials.get("dbname", "")
+        if not path:
+            raise ValueError("SQLite reconnect requires 'dbname' (file path) in credentials")
         conn = sqlite3.connect(path)
         conn.row_factory = sqlite3.Row
         return conn
@@ -319,10 +335,13 @@ def reconnect(credentials: dict):
     user     = credentials.get("user", "")
     password = credentials.get("password", "")
 
+    if not dbname:
+        raise ValueError("reconnect() requires 'dbname' in credentials")
+
     return connect_with_credentials(db_type, host, port, dbname, user, password)
 
 
-def run_query(conn, sql: str, db_type: str, params: list = None) -> tuple[list, list]:
+def run_query(conn, sql: str, db_type: str, params: list | None = None) -> tuple[list, list]:
     """Execute a SELECT query safely using parameterized queries.
     
     Args:
@@ -334,6 +353,10 @@ def run_query(conn, sql: str, db_type: str, params: list = None) -> tuple[list, 
     Returns:
         Tuple of (headers_list, rows_list). Returns empty lists for non-SELECT queries.
     """
+    if conn is None:
+        raise RuntimeError("run_query called with a None connection object")
+    if not sql or not sql.strip():
+        raise ValueError("run_query called with an empty SQL string")
     cursor = conn.cursor()
     if params:
         cursor.execute(sql, params)
@@ -447,7 +470,7 @@ def discover_databases(db_type: str, host: str, port: str,
         conn = connect_with_credentials("postgresql", host, port, "postgres", user, password)
         cur = conn.cursor()
         cur.execute("SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname")
-        names = [row[0] for row in cur.fetchall()]
+        names = [str(tuple(row)[0]) for row in cur.fetchall()]
         conn.close()
         return [n for n in names if n not in system_dbs]
 
@@ -455,7 +478,7 @@ def discover_databases(db_type: str, host: str, port: str,
         conn = connect_with_credentials("mysql", host, port, "information_schema", user, password)
         cur = conn.cursor()
         cur.execute("SHOW DATABASES")
-        names = [row[0] for row in cur.fetchall()]
+        names = [str(tuple(row)[0]) for row in cur.fetchall()]
         conn.close()
         return [n for n in names if n not in system_dbs]
 

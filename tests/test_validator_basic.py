@@ -2,7 +2,14 @@
 test_validator_basic.py  —  Dataloom v3.0
 Unit tests for the validator module.
 
-Tests individual validation functions in isolation to ensure they work correctly.
+Covers the exported constant sets (used by callers to build valid intents)
+and the core ``validate_intent`` function in both its minimal and advanced
+forms. All tests run in isolation against a fixed in-memory schema.
+
+Test classes:
+    TestValidatorConstants    — completeness checks on exported constant sets
+    TestValidateIntentBasic   — happy-path and rejection for required fields
+    TestValidateIntentAdvanced — join types, HAVING, and operator validation
 """
 
 import pytest
@@ -24,6 +31,7 @@ from validator import (
 
 @pytest.fixture(scope="function")
 def sample_schema():
+    """Four-table schema used throughout this file."""
     return {
         "fact_orders": [
             "order_id", "customer_id", "product_id", "employee_id",
@@ -38,6 +46,7 @@ def sample_schema():
 
 @pytest.fixture(scope="function")
 def sample_join_paths():
+    """Join conditions for the four-table schema."""
     return {
         "fact_orders": {
             "dim_customers": "fact_orders.customer_id = dim_customers.customer_id",
@@ -52,6 +61,7 @@ def sample_join_paths():
 
 @pytest.fixture(autouse=True)
 def setup_test_environment(sample_join_paths):
+    """Apply join paths before each test and clear them on teardown."""
     set_join_paths(sample_join_paths)
     yield
     set_join_paths({})
@@ -176,8 +186,8 @@ class TestValidateIntentAdvanced:
         assert len(errors) == 0
 
     def test_invalid_join_type_is_rejected(self, sample_schema):
-        """
-        Invalid join types must be explicitly rejected by the validator.
+        """Invalid join types must be explicitly rejected by the validator.
+
         The validator pre-checks join type before normalize_joins() runs,
         so an unknown type like "INVALID" produces a validation error.
         This is the fail-fast behaviour introduced in Issue 4.
@@ -192,7 +202,6 @@ class TestValidateIntentAdvanced:
             "having": [], "limit": 10, "order_by": None, "order_dir": "DESC",
         }
         ok, errors = validate_intent(intent, sample_schema)
-        # INVALID join type is explicitly rejected — validation must fail
         assert not ok, "Expected validation to fail for unknown join type"
         assert any("join type" in e.lower() or "invalid" in e.lower() for e in errors), (
             f"Expected a join-type error message, got: {errors}"

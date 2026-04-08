@@ -16,6 +16,7 @@ import pytest
 from validator import validate_intent, set_join_paths
 from sql_builder import build_sql
 
+# Six-table schema; spend_summary is used as a CTE target in 4C-1 tests.
 SCHEMA = {
     "fact_orders":   ["order_id", "customer_id", "product_id", "employee_id",
                       "unit_price", "quantity", "order_date", "ship_date",
@@ -32,6 +33,7 @@ SCHEMA = {
 
 @pytest.fixture(autouse=True)
 def setup_joins():
+    """Register join paths for the six-table schema before every test."""
     set_join_paths({
         "fact_orders": {
             "dim_customers": "fact_orders.customer_id = dim_customers.customer_id",
@@ -48,11 +50,13 @@ def setup_joins():
 
 
 def val(intent):
+    """Validate intent; returns (ok, errors)."""
     ok, errs = validate_intent(intent, SCHEMA)
     return ok, errs
 
 
 def sql(intent, db="postgresql"):
+    """Validate intent and build SQL; asserts validation passes."""
     ok, errs = validate_intent(intent, SCHEMA)
     assert ok, f"Validation failed: {errs}"
     return build_sql(intent, db)[0]
@@ -89,7 +93,7 @@ class TestCTEEngine:
             }}],
         })
         assert "WITH spend_summary AS" in q
-        # LIMIT must not appear inside the CTE definition block
+        # LIMIT inside a CTE body produces invalid SQL.
         lines_before_main = q.split("SELECT cnt")[0] if "SELECT cnt" in q else q
         assert "LIMIT" not in lines_before_main or q.count("LIMIT") == 1
 
@@ -145,6 +149,8 @@ class TestCTEEngine:
         assert any("sub-intent" in e for e in errs)
 
     def test_cte_params_ordered_before_main_params(self):
+        # CTE bind parameters must come before the outer query's parameters
+        # so that positional placeholders ($1, $2, …) resolve correctly.
         intent = {
             "metrics": [{"metric": "cnt", "aggregation": "COUNT", "target_column": "customer_id"}],
             "fact_table": "spend_summary", "group_by": [],
@@ -187,6 +193,7 @@ class TestCorrelatedFilter:
         assert "dim_products.category" in q
 
     def test_correlated_filter_defaults_to_fact_table(self):
+        # When fact_table is omitted from the subquery, the outer fact_table is used.
         q = sql({
             "metrics": [{"metric": "cnt", "aggregation": "COUNT", "target_column": "product_id"}],
             "fact_table": "dim_products", "group_by": [],

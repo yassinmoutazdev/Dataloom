@@ -1,8 +1,11 @@
 """
-End-to-end tests for the full Dataloom pipeline.
+Dataloom end-to-end pipeline tests.
 
-Tests the complete flow from intent parsing to SQL generation, replicating
-the functionality of the eval_harness.py but in pytest format.
+Validates the complete flow from intent validation through SQL generation for
+all supported feature sprints (Baseline, 4B, 4C). Mirrors eval_harness.py
+coverage in pytest form so CI catches regressions on every merge.
+
+Public functions: run_test_case
 """
 import pytest
 from validator import validate_intent, set_join_paths
@@ -45,7 +48,27 @@ def setup_join_paths():
 
 def run_test_case(intent, schema_map, must_contain=None, must_not_contain=None,
                   expect_valid=True, db="postgresql"):
-    """Helper function to run a test case."""
+    """Validate an intent and assert SQL output constraints.
+
+    Runs validate_intent followed by build_sql, then checks that the
+    generated SQL contains or excludes the specified substrings. Comparisons
+    are case-insensitive.
+
+    Args:
+        intent: Parsed query intent dict passed to validate_intent and build_sql.
+        schema_map: Table-to-columns mapping used by the validator.
+        must_contain: Substrings that must appear in the generated SQL.
+        must_not_contain: Substrings that must not appear in the generated SQL.
+        expect_valid: When False, asserts that validation fails and returns early
+            without attempting SQL generation.
+        db: SQL dialect passed to build_sql. Defaults to "postgresql".
+
+    Returns:
+        Tuple of (sql, params) when expect_valid is True, otherwise None.
+
+    Raises:
+        pytest.Failed: If validation or SQL content assertions are not met.
+    """
     ok, errors = validate_intent(intent, schema_map)
 
     if not expect_valid:

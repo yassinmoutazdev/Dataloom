@@ -1,12 +1,14 @@
 """
-Integration tests for gap closure functionality.
+Dataloom gap-closure integration tests.
 
-Tests for confirmed fixes identified in the Master Review Prompt:
-- GAP-2: NTILE order_by_column schema-validated
-- GAP-5: NTILE order_by_column alias auto-expanded to full expression
-- GAP-6: auto_repair_joins scans computed_columns WHEN conditions
-- GAP-7: PERCENTILE_CONT raises ValueError on MySQL (not silent bad SQL)
-- GAP-8: BFS-inserted hops inherit LEFT semantics when query has LEFT JOIN
+Covers the five confirmed fixes identified in the Master Review Prompt:
+  GAP-2: NTILE order_by_column is schema-validated.
+  GAP-5: NTILE order_by_column alias is auto-expanded to its full expression.
+  GAP-6: auto_repair_joins scans CASE WHEN conditions for implicit table refs.
+  GAP-7: PERCENTILE_CONT raises ValueError on MySQL instead of emitting bad SQL.
+  GAP-8: BFS-inserted join hops inherit LEFT semantics when any explicit LEFT JOIN exists.
+
+Public functions: base_intent
 """
 import copy
 import pytest
@@ -63,7 +65,17 @@ def setup_join_paths():
 
 
 def base_intent(**overrides):
-    """Create a base intent with common defaults."""
+    """Return a minimal valid intent with sensible defaults, optionally overridden.
+
+    Provides a base for test cases so each test only specifies the fields
+    relevant to the scenario under test.
+
+    Args:
+        **overrides: Any intent fields to override on the default dict.
+
+    Returns:
+        dict: A complete intent dict suitable for validate_intent and build_sql.
+    """
     intent = {
         "metrics":          [{"metric":"total_revenue","aggregation":"SUM",
                               "target_column":"unit_price","distinct":False}],

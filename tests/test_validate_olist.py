@@ -1,18 +1,19 @@
 """
 test_validate_olist.py  —  Dataloom v3.0
-Live-database integration test suite: runs 10 canonical questions against
-the real Olist database and verifies that generated SQL contains expected
+Live-database integration tests: runs 10 canonical questions against the
+real Olist database and verifies that generated SQL contains expected
 patterns and executes without error.
 
 Requires a live database configured via .env.
-Skip all tests gracefully when no DB connection is available.
+All tests are skipped gracefully when no DB connection is available, so
+the suite can live alongside unit tests without failing CI.
 
 Usage:
     pytest test_validate_olist.py -v
     pytest test_validate_olist.py -v --db=mysql
     pytest test_validate_olist.py -v -k "Q01 or Q07"
 
-To run with verbose SQL output, use the --verbose pytest flag or add -s.
+To print generated SQL, pass -s to pytest.
 """
 
 import os
@@ -49,11 +50,14 @@ def pytest_addoption(parser):
 
 @pytest.fixture(scope="session")
 def db_type(request):
+    """Return the --db dialect flag, defaulting to postgresql."""
     return request.config.getoption("--db", default="postgresql")
 
 
 # ── The 10 evaluation questions ───────────────────────────────────────────────
 
+# Each entry maps a feature tag to the question text and the SQL patterns
+# that must appear in the generated output for the test to pass.
 EVAL_QUESTIONS = [
     {
         "id": "Q01", "feature": "4B-2 LAG",
@@ -113,6 +117,18 @@ EVAL_QUESTIONS = [
 # ── Session-scoped DB + schema fixtures ───────────────────────────────────────
 
 def _connect_db(db_type: str):
+    """Open a database connection for the given dialect.
+
+    Args:
+        db_type: One of ``"postgresql"``, ``"mysql"``, or ``"sqlite"``.
+
+    Returns:
+        An open database connection object.
+
+    Raises:
+        ValueError: If ``db_type`` is not a recognised dialect.
+        ImportError: If the required driver package is not installed.
+    """
     if db_type == "postgresql":
         import psycopg2
         conn = psycopg2.connect(
@@ -122,6 +138,7 @@ def _connect_db(db_type: str):
             user=os.getenv("DB_USER"),
             password=os.getenv("DB_PASSWORD"),
         )
+        # Read-only mode prevents accidental writes during test runs.
         conn.set_session(readonly=True)
         return conn
     elif db_type == "mysql":
@@ -142,7 +159,7 @@ def _connect_db(db_type: str):
 
 @pytest.fixture(scope="session")
 def db_connection(db_type):
-    """Session-scoped DB connection. Skips entire session if unavailable."""
+    """Open a session-scoped DB connection; skip the entire session if unavailable."""
     if not _CODEBASE_AVAILABLE:
         pytest.skip(f"Codebase not importable: {_IMPORT_ERROR}")
     try:
@@ -155,16 +172,20 @@ def db_connection(db_type):
 
 @pytest.fixture(scope="session")
 def olist_schema(db_connection, db_type):
-    """Load schema from live DB and wire join paths. Skip on failure."""
+    """Load schema and join paths from the live DB; skip on failure.
+
+    Returns:
+        Tuple of ``(schema_text, schema_map, schema_types)`` as returned
+        by ``get_schema``.
+    """
     if not _CODEBASE_AVAILABLE:
         pytest.skip(f"Codebase not importable: {_IMPORT_ERROR}")
-    
+
     try:
         schema_text, schema_map, schema_types, join_paths = get_schema(db_connection)  # type: ignore
     except Exception as e:
         pytest.skip(f"Schema load failed: {e}")
 
-    # join_paths is returned directly by get_schema — no separate call needed
     try:
         set_join_paths(join_paths)  # type: ignore
     except Exception:
@@ -175,6 +196,11 @@ def olist_schema(db_connection, db_type):
 
 @pytest.fixture(scope="session")
 def model_config():
+    """Return LLM provider config from environment variables.
+
+    Supports ``MODEL_PROVIDER=openai`` (with ``OPENAI_MODEL`` and
+    ``OPENAI_API_KEY``) and the default ``ollama`` provider.
+    """
     provider = os.getenv("MODEL_PROVIDER", "ollama").lower()
     if provider == "openai":
         return {
@@ -191,6 +217,21 @@ def model_config():
 # ── Helper ────────────────────────────────────────────────────────────────────
 
 def _run_query(conn, sql_text: str, params: list, db_type: str):
+    """Execute a parameterised query and return headers + rows.
+
+    Rewrites ``%s`` placeholders to ``?`` for SQLite, which uses a
+    different placeholder syntax from psycopg2 and mysql-connector.
+
+    Args:
+        conn: An open database connection.
+        sql_text: The SQL string with ``%s`` placeholders.
+        params: Positional parameter list corresponding to the placeholders.
+        db_type: Dialect; used to rewrite placeholders for SQLite.
+
+    Returns:
+        Tuple of ``(headers, rows)`` where ``headers`` is a list of column
+        name strings and ``rows`` is a list of row tuples.
+    """
     cursor = conn.cursor()
     if db_type == "sqlite" and "%s" in sql_text:
         sql_text = sql_text.replace("%s", "?")
@@ -205,17 +246,28 @@ def _run_query(conn, sql_text: str, params: list, db_type: str):
 @pytest.mark.integration
 @pytest.mark.parametrize("q", EVAL_QUESTIONS, ids=[q["id"] for q in EVAL_QUESTIONS])
 def test_olist_question(q, db_connection, olist_schema, model_config, db_type):
-    """
-    Full pipeline integration test:
-      1. Parse intent via LLM
-      2. Validate intent
-      3. Build SQL
-      4. Assert expected SQL patterns are present
-      5. Execute against live DB (assert no DB error)
+    """Full pipeline integration test for a single evaluation question.
+
+    Steps:
+        1. Parse intent via LLM.
+        2. Validate the parsed intent.
+        3. Build SQL from the validated intent.
+        4. Assert that every expected SQL pattern is present.
+        5. Execute the SQL against the live database.
+
+    Clarification requests from the model are surfaced as failures rather
+    than silent skips, so they appear in the test report.
+
+    Args:
+        q: One entry from ``EVAL_QUESTIONS``.
+        db_connection: Session-scoped live DB connection.
+        olist_schema: ``(schema_text, schema_map, schema_types)`` tuple.
+        model_config: LLM provider config dict.
+        db_type: Dialect string (postgresql / mysql / sqlite).
     """
     if not _CODEBASE_AVAILABLE:
         pytest.skip(f"Codebase not importable: {_IMPORT_ERROR}")
-    
+
     schema_text, schema_map, schema_types = olist_schema
 
     # Step 1: Parse intent
@@ -224,7 +276,6 @@ def test_olist_question(q, db_connection, olist_schema, model_config, db_type):
     except Exception as e:
         pytest.fail(f"[{q['id']}] Intent parse failed: {e}")
 
-    # Surface clarification requests as failures (not silent skips)
     if intent.get("clarification_needed"):
         pytest.fail(
             f"[{q['id']}] Model requested clarification instead of generating intent: "
@@ -259,5 +310,4 @@ def test_olist_question(q, db_connection, olist_schema, model_config, db_type):
             pass
         pytest.fail(f"[{q['id']}] Execution failed: {e}\nSQL:\n{sql_text}")
 
-    # Sanity: results should be non-empty for most Olist questions
     assert rows is not None, f"[{q['id']}] Query returned None rows (cursor error)"
