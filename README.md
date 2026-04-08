@@ -97,7 +97,7 @@ Dataloom handles a wide range of analytical query types:
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/your-username/dataloom.git
+git clone https://github.com/yassinmoutazdev/dataloom
 cd dataloom
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
@@ -315,6 +315,7 @@ Dataloom can use human-authored column descriptions to improve intent accuracy f
 ```
 
 Descriptions are injected into the schema text the LLM receives. They are particularly useful when column names are abbreviated, domain-specific, or could be confused for other concepts (e.g. `value` vs `price` vs `total`).
+You can customize schema descriptions in "Schema Tuner" in the Settings panel as well. 
 
 ---
 
@@ -348,6 +349,110 @@ Snowflake schemas often require multi-hop join paths (e.g. `fact_orders → dim_
 **Why no connection pooling?**
 
 The current single-connection-per-session model is intentional at this deployment scale. Each session owns exactly one database connection, opened at setup and closed when the session expires. Pooling is deferred until connection contention becomes a measured problem.
+
+---
+
+## Limitations
+
+These are known boundaries of the current architecture. They are not bugs — they are the honest edges of the intent-first design when confronted with real-world database questions.
+
+### The intent schema is a fixed contract
+
+The JSON intent structure (`metrics`, `group_by`, `joins`, `filters`, etc.) was designed to cover a broad set of analytical patterns, but it is a closed vocabulary. Any question that requires SQL constructs outside that vocabulary — for example, recursive CTEs, `PIVOT`/`UNPIVOT`, `MERGE`, full-text search predicates, or database-specific extensions like PostgreSQL's `LATERAL` joins or `TABLESAMPLE` — cannot be expressed in the intent and will either be silently approximated or rejected by the validator. Adding support for a new SQL pattern requires coordinated changes across `intent_parser.py` (prompt), `validator.py` (schema check), and `sql_builder.py` (rendering + dialect matrix).
+
+### Ambiguous or semantically overloaded column names degrade accuracy
+
+The LLM maps natural language terms to schema column names using the schema text and any `schema_descriptions.json` hints. When multiple columns could plausibly represent the same concept — e.g. `price`, `unit_price`, `total_price`, `sale_amount` — the model must guess. That guess is not validated against business intent, only against schema existence. A query for "total revenue" may silently aggregate the wrong column, and the result will look numerically plausible while being semantically wrong. Schema descriptions mitigate this but require manual upkeep.
+
+### One LLM call, one fact table
+
+Each query is anchored to a single `fact_table`. Questions that naturally span multiple fact tables — "compare active customers who placed orders with those who only browsed" — cannot be expressed cleanly in a single intent object. The model will attempt to force the query into one table context, often producing an incorrect or incomplete result. Multi-fact-table questions require either schema redesign or manual SQL.
+
+### BFS join repair is topology-only, not semantic
+
+The auto-repair mechanism finds the shortest FK path between two tables in the graph. It does not know whether that path is semantically correct for the question. In schemas with multiple valid join paths (e.g. a `users` table reachable through both `orders` and `reviews`), BFS will always pick the shortest path, which may not be the one the user intended. There is no mechanism to surface join path ambiguity to the user.
+
+### The vague-question pre-screen is regex-based and shallow
+
+`is_vague_question()` catches a hardcoded list of open-ended phrasing patterns (`"how are we doing"`, `"tell me about"`, etc.). It will miss vague questions phrased differently, and it will occasionally false-positive on legitimate but similarly worded queries. There is no semantic understanding at this stage — it is a literal string match before any LLM call is made.
+
+### The self-correction loop is bounded and not guaranteed to converge
+
+When SQL execution fails, the error message is fed back to the LLM for a targeted fix. This loop runs a fixed number of times. If the root cause of the failure is a structural mismatch between the intent schema and what the question actually needs — rather than a simple column name error — the loop will exhaust its retries without producing a valid result. The user sees a failure message but gets no actionable explanation of why their question cannot be answered.
+
+### No support for write operations by design
+
+Dataloom enforces read-only database sessions at the driver level. This is a deliberate security decision, but it means the engine cannot be used for questions that imply data modification — even innocuous ones like "add a tag to this customer" or "mark these orders as processed." Any such question will fail silently or produce a confusing error.
+
+### Context window limits cap schema size
+
+The full schema text — table names, column names, types, and any `schema_descriptions.json` annotations — is injected into every LLM prompt. For databases with hundreds of tables and thousands of columns, this schema text can approach or exceed the model's effective context window, causing the model to truncate or misread the schema. There is no schema pruning or relevance-based selection; the full schema is always sent.
+
+### Local model quality is highly variable
+
+When running against Ollama with smaller local models (e.g. Mistral 7B), JSON intent quality degrades significantly on complex queries involving CTEs, window functions, correlated subqueries, or multi-metric groupings. The self-correction loop helps, but smaller models produce structurally malformed JSON more often, which the validator rejects entirely rather than repairing. Cloud-hosted frontier models are strongly recommended for production use.
+
+### Session memory is shallow
+
+Follow-up detection merges context from the previous turn only. Dataloom does not maintain a full conversational history that the LLM reasons over. A three-turn conversation — "show me top customers", "filter to last year", "now break it down by region" — may lose the first turn's context by the third question, producing a query that groups by region without the original customer ranking.
+
+---
+
+## Model recommendations
+
+The intent-first architecture makes a specific demand on the model: produce well-formed, schema-grounded JSON from a natural language question — not SQL, not prose. This is a structured extraction task that rewards instruction-following, schema comprehension, and consistency over raw reasoning depth. The following recommendations reflect current benchmark evidence (as of April 2026) and the specific failure modes observed in this pipeline.
+
+### Cloud providers
+
+**Best for reasoning-heavy / ambiguous queries: Claude Sonnet 4.6 (Anthropic)**
+
+Claude Sonnet 4.6 (`claude-sonnet-4-6`) is now the strongest recommendation for production Dataloom deployments. It scores 79.6% on SWE-bench Verified and leads among models tested on complex multi-step structured-output tasks. Its behaviour on ambiguous schemas is particularly well-suited to this pipeline: it consistently surfaces `clarification_needed` when confidence is low rather than producing a plausible-but-wrong intent, which is the safer failure mode in a user-facing deployment. Claude's extended reasoning capability handles queries where the correct metric depends on interpreting domain-specific column names — the hardest class of failures in the intent-first model. The Anthropic provider requires a separate `pip install anthropic` and relies on prompt-level JSON constraints rather than a native `json_object` response format.
+
+**Best instruction-following / native JSON mode: GPT-4.1 (OpenAI)**
+
+GPT-4.1 remains a strong and predictable choice, particularly valued for its native `json_object` response format (`response_format: {"type": "json_object"}`), which eliminates the markdown-fence stripping heuristic that other providers require. Its instruction-following is highly consistent across repeated queries and its 1-million-token context window is a genuine advantage for large schemas. Where GPT-4.1 excels in this pipeline is literal schema adherence on well-specified questions — it reliably maps column names exactly as provided. Its relative weakness compared to Claude 4.x is on ambiguous or multi-hop reasoning queries, where it is more likely to commit confidently to an incorrect intent rather than requesting clarification. It is the most forgiving model when the intent schema pushes against its edges, tending to produce a best-effort valid intent rather than failing outright.
+
+**Best cost-to-performance for high volume: Gemini 2.5 Flash / Flash-Lite (Google)**
+
+For deployments with high query volume and budget constraints, Gemini Flash-Lite offers competitive intent quality at a fraction of the cost of Claude Sonnet 4.6 or GPT-4.1. It uses the same OpenAI-compatible endpoint in Dataloom, supports `json_object` mode, and handles the majority of straightforward aggregation and grouping queries without issue. It is less reliable on the more complex intent types (CTEs, correlated subqueries, NTILE), so consider pairing it with a fallback to a stronger model on low-confidence intents. For teams that want frontier-level accuracy at a significantly lower price point, Gemini 2.5 Pro is also worth evaluating — it has closed much of the quality gap with the top-tier models at a competitive cost.
+
+**Enterprise deployments: Azure OpenAI**
+
+For organizations that cannot send data to external APIs, Azure OpenAI provides GPT-4.1 and other models behind a private endpoint with SOC 2 compliance. Configuration requires an endpoint URL and deployment name in addition to the API key. Performance is identical to the OpenAI provider for the same underlying model.
+
+### Local models (Ollama)
+
+Local inference is suitable for development, demo environments, and privacy-sensitive deployments where no data can leave the network. Quality degrades significantly for complex queries. The local model landscape has shifted considerably — the Qwen 2.5 family now clearly leads for structured JSON output tasks and is the recommended default.
+
+**Recommended: `qwen2.5:14b`**
+
+Qwen 2.5 14B is the current recommended default for Ollama deployments, replacing the earlier `mistral` and `mistral-nemo` recommendations. It produces significantly more consistently valid JSON than Mistral 7B on multi-metric and multi-filter intents, handles the basic aggregation/grouping/filter patterns reliably, and fits comfortably on a 16 GB RAM system. Enable Ollama's `format: "json"` parameter in API calls alongside Dataloom's existing retry loop — this combination resolves the large majority of malformed-output failures at this model size. If hardware is limited to 8 GB RAM, `qwen2.5:7b` is the recommended fallback, still outperforming Mistral 7B on structured extraction tasks.
+
+**For better complex query support: `qwen2.5:32b` or `deepseek-r1:32b`**
+
+Larger parameter counts meaningfully improve JSON schema compliance and multi-join intent quality. `qwen2.5:32b` is the strongest all-around local choice for complex Dataloom queries — it handles CTEs, window functions, NTILE, and correlated subqueries substantially better than the 14B variant and runs on a single high-end GPU (RTX 4090 or equivalent). For workloads that skew toward queries requiring multi-step reasoning to resolve ambiguity — where the correct metric is not obvious from column names alone — `deepseek-r1:32b` is a strong alternative. Its chain-of-thought reasoning approach is particularly effective at the disambiguation step before producing the final intent JSON.
+
+**For 8 GB RAM systems: `llama3.3:8b`**
+
+`llama3.3:8b` replaces `mistral:7b` as the recommended lightweight option. It produces fewer malformed JSON intents on multi-filter queries while fitting comfortably within 8 GB RAM. Mistral 7B remains acceptable for demos and simple single-metric queries, but `llama3.3:8b` is the better default for any workload that regularly exercises joins or grouped aggregations.
+
+**Avoid for production: models under 13B parameters**
+
+Sub-13B models (including `mistral:7b` and `qwen2.5:7b`) frequently produce structurally malformed intent JSON on anything beyond simple single-metric queries. The validator will reject these intents, and the self-correction loop rarely recovers from a fundamental JSON structure error. They are acceptable for demos and local development against simple schemas, but not for real workloads.
+
+### Provider selection summary
+
+| Use case | Recommended model |
+|---|---|
+| Production, best accuracy | Claude Sonnet 4.6 (`anthropic`) |
+| Instruction-following, native JSON mode | GPT-4.1 (`openai`) |
+| Frontier performance, cost-sensitive | Gemini 2.5 Pro (`gemini`) |
+| High volume, budget | Gemini 2.5 Flash-Lite (`gemini`) |
+| Enterprise / private network | Azure OpenAI with GPT-4.1 deployment |
+| Local / offline, standard | `qwen2.5:14b` via Ollama |
+| Local / offline, complex queries | `qwen2.5:32b` or `deepseek-r1:32b` via Ollama |
+| Local / 8 GB RAM | `llama3.3:8b` via Ollama |
+| Development / demo | Any Ollama model; `qwen2.5:14b` is the recommended default |
 
 ---
 
