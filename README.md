@@ -456,6 +456,62 @@ Sub-13B models (including `mistral:7b` and `qwen2.5:7b`) frequently produce stru
 
 ---
 
+## The Dataloom Story
+
+Dataloom started with laziness.
+
+I was working through a self-made SQL training file — a collection of exercises I had put together to sharpen my query-writing skills without relying on AI. The plan was simple: one question a day for two months, solve it myself, get feedback from ChatGPT on my approach.
+
+I made it to day four.
+
+On the fourth day, I stopped mid-exercise and started thinking. In my actual work, I was already using LLMs to help write queries. I had enough SQL knowledge to evaluate whether the output was correct — I could spot hallucinations, catch wrong joins, question the logic. So the question hit me: why am I spending time getting *better* at writing SQL when I already have the ability to *direct and evaluate* a system that writes it?
+
+The fear driving most people toward "learn more SQL" is the same fear driving most people away from AI: *it's going to replace us.* But that fear, if it directs you toward competing with AI instead of leveraging it, points you in the wrong direction. The people who get displaced aren't the ones who lack a specific technical skill — they're the ones who resist change altogether.
+
+So instead of continuing the SQL exercises, I asked a different question: what if I just built the system?
+
+---
+
+At that point, I had essentially zero programming knowledge.
+
+Not "junior developer" zero. Actual zero. I didn't know what `pip install` did. I didn't know what a terminal was. The first time someone told me to run `python app.py`, Claude had to explain what that meant, and I typed it into the chat window three times before I understood it went into a different place entirely.
+
+I also didn't know what Git or GitHub were. The first twenty to thirty versions of Dataloom — everything up through v3.0 — were managed by copying entire folders. When Claude produced a new version of a file, I downloaded it and replaced the old one manually. That was my version control. The concept of a commit, a repository, a branch — none of it existed in my mental model yet. The first time I actually used git add . && git commit && git push as a real workflow and not just commands I was copying from a chat window was in the final versions of the project. Before that, GitHub was something I had heard of but couldn't have explained the purpose of.
+
+The first working version ran in a CLI. I built somewhere around twenty iterations of it before I had anything with a visual interface. Each one taught me something — not always about code, but about thinking. About what it means to have a system that does something reliably. About the difference between "it works when I test it" and "it works."
+
+When I finally opened VS Code for the first time, I was genuinely intimidated. It looked like a cockpit. I closed it and went back to the Claude chat window. Then I opened it again. Then I slowly started spending more time there than in the chat.
+
+---
+
+The project hit a real wall at deployment.
+
+Getting it onto Railway — turning it from something that ran on my machine into something accessible to anyone — was the first time I seriously thought about stopping. The number of things I didn't know was enormous: what a database connection string was, what environment variables actually did, what Gunicorn was and why it existed, why the app that worked locally crashed in a container.
+
+I took a break. During that time I completed a Generative AI for Software Development course from deeplearning.ai, which gave me a more grounded understanding of both AI systems and software development practices. I came back to the project with a different perspective.
+
+I realized I had been building without a test suite. No regression tests, no automated validation — just manual testing against my own intuition. Claude had generated a few test files early on and I had treated them as a nice-to-have. The course made clear they were the foundation. I went back and rewrote them properly.
+
+I realized I had been building without documentation standards. I created a `DOCUMENTATION_STANDARDS.md` file to guide the AI when writing docstrings, then had to apply it retroactively across every module.
+
+The project got better as my awareness grew — not my coding skill, but my *awareness*. My understanding of what questions to ask, what decisions mattered, what to defer and what to lock in. The code was mostly built by AI. The architecture, the decisions, the direction — that was mine.
+
+---
+
+The clearest thing Dataloom gave me wasn't the product.
+
+It was direction.
+
+I'm an undergraduate student, and for a long time I wasn't sure which area I am going to pursue. Software Developement never came to mind. By the end of this project, the answer was obvious in a way it had never been before. I found myself wondering why it took this long to see it.
+
+The project was built from ideas more than code. There are parts of the codebase I couldn't write from scratch today. But the reasoning behind every major decision — the intent-first architecture, the validator as a security boundary, the deterministic SQL builder — I built that. The AI wrote the syntax. I wrote the thinking.
+
+That distinction matters. It's the same distinction Dataloom itself is built on: the LLM handles the translation, the human provides the direction. The system only works because someone decided what it should do and why.
+
+Dataloom was built out of laziness, curiosity, ignorance, stubbornness, a Railway deployment disaster, and about two months of learning how to think about software. It is what happens when you stop being afraid of the tools and start asking what you can build with them.
+
+---
+
 ## Contributing
 
 Issues and pull requests are welcome. Before submitting:
