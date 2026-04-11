@@ -177,7 +177,6 @@ Open an issue with:
 
 ---
 
-## Code of Conduct & License
+## License
 
 - See the project license: https://github.com/yassinmoutazdev/Dataloom/blob/main/LICENSE
-- If present, please follow the Code of Conduct: https://github.com/yassinmoutazdev/Dataloom/blob/main/CODE_OF_CONDUCT.md
