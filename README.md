@@ -512,17 +512,6 @@ Dataloom was built out of laziness, curiosity, ignorance, stubbornness, a Railwa
 
 ---
 
-## Contributing
-
-Issues and pull requests are welcome. Before submitting:
-
-1. Run the full test suite — `pytest`
-2. Follow the documentation standards in `DOCUMENTATION_STANDARDS.md`
-3. For new SQL features, add entries to all three files: `intent_parser.py` (prompt), `validator.py` (schema check), `sql_builder.py` (rendering + dialect matrix)
-4. New providers require branches in both `intent_parser.py` (`_call_model`) and `app.py` (`_test_model_connection`, `_default_model_config`, `setup_provider_models`)
-
----
-
 ## License
 
 MIT
